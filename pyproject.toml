@@ -1,40 +1,29 @@
 [build-system]
-requires = ["setuptools>=61.0", "poetry-core>=1.0"]
+requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "databricks-mcp-server"
 version = "0.1.0"
-description = "MCP Server for Databricks Interaction"
+description = "MCP Server for interacting with Databricks"
+authors = ["Your Name <you@example.com>"] # Please update this
 readme = "README.md"
-license = "MIT" # Or your chosen license
-authors = [
-  "Your Name / Team Name <your@email.com>",
-]
 packages = [{include = "databricks_mcp", from = "src"}]
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "License :: OSI Approved :: MIT License", # Adjust if needed
-    "Operating System :: OS Independent",
-    "Topic :: Software Development :: Libraries :: Application Frameworks",
-]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
+python = ">=3.10,<3.13"  # Compatible range, adjusted for mcp dependency
 # Use the correct package name 'mcp'
-mcp = {extras = ["cli"], version = ">=1.0.0,<2.0.0"}
-databricks-sdk = ">=0.20.0,<1.0.0"
-python-dotenv = ">=1.0.0,<2.0.0"
-pydantic = "^2.0"
+mcp = "*" # Replace with actual version constraint if known
+databricks-sdk = "*" # Replace with actual version constraint if known
+pydantic-settings = "*"
+python-dotenv = "*"
+structlog = "*" # For structured logging, alternative to custom formatter
 
 [tool.poetry.group.dev.dependencies]
-pytest = ">=7.0.0,<8.0.0"
-pytest-mock = ">=3.0.0,<4.0.0"
-ruff = ">=0.1.0,<1.0.0" # Check for latest appropriate version
-pytest-asyncio = "*" # If using async tests
+ruff = "*"
+pytest = "*"
+pytest-mock = "*"
+pytest-asyncio = "*" # If async tests are needed later
 
 [tool.poetry.urls]
 Homepage = "https://github.com/your-username/databricks-mcp-server" # Example URL
@@ -50,13 +39,51 @@ Repository = "https://github.com/your-username/databricks-mcp-server" # Example 
 [tool.ruff]
 line-length = 100
 target-version = "py39"
-src = ["src"]
 
+[tool.ruff.lint]
+select = [
+    "F",  # Pyflakes
+    "E",  # pycodestyle Errors
+    "W",  # pycodestyle Warnings
+    "I",  # isort
+    "N",  # pep8-naming
+    "UP", # pyupgrade
+    "B",  # flake8-bugbear
+    "A",  # flake8-builtins
+    "C4", # flake8-comprehensions
+    "SIM",# flake8-simplify
+    "ARG",# flake8-unused-arguments
+    # "PL", # Pylint - Enable selectively if needed
+    "RUF",# Ruff-specific rules
+    "S",  # flake8-bandit
+    # "ASYNC", # flake8-async - Enable if using async heavily
+    "T20", # flake8-print
+    "TRY", # tryceratops
+    # "ANN", # flake8-annotations - Consider enabling later
+]
+ignore = ["E501"] # Handled by formatter
 fixable = ["ALL"]
 unfixable = []
+
+[tool.ruff.lint.isort]
+force-single-line = true
+known-first-party = ["databricks_mcp"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
-line-ending = "lf" 
+line-ending = "lf"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"] # Ignore assert statements in tests
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
+pythonpath = [
+    "src"
+] 

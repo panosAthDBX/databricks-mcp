@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-This document details the technical architecture for the Databricks MCP Server. This server implements the Model Context Protocol (MCP) to provide a standardized interface for AI agents (Clients/Hosts) to interact with the Databricks platform. It translates MCP requests into appropriate Databricks REST API calls.
+This document details the technical architecture for the Databricks MCP Server. This server implements the Model Context Protocol (MCP) to provide a standardized interface for AI agents (Clients/Hosts) to interact with the Databricks platform. It translates MCP requests into appropriate Databricks REST API calls using the official `databricks-sdk`.
 
 ## 2. Architecture Diagram
 
@@ -20,14 +20,19 @@ graph LR
         RequestRouter --> ToolHandler[Tool Handler]
         RequestRouter --> ResourceHandler[Resource Handler]
         RequestRouter --> PromptHandler[Prompt Handler]
+        RequestRouter --> ErrorMapper[Error Mapper]
 
         AuthN --> DatabricksAPIWrapper(Databricks API Wrapper)
         ToolHandler --> DatabricksAPIWrapper
         ResourceHandler --> DatabricksAPIWrapper
         PromptHandler -.-> DatabricksAPIWrapper  // Prompts might indirectly use API info
+        ErrorMapper -.-> DatabricksAPIWrapper
 
         DatabricksAPIWrapper --> Config(Server Configuration)
         AuthN --> Config
+        DatabricksAPIWrapper --> Logger[Structured Logger]
+        MCPInterface --> Logger
+        RequestRouter --> Logger
     end
 
     subgraph Databricks Platform
@@ -36,7 +41,7 @@ graph LR
     end
 
     MCPClient <-.->|MCP (JSON-RPC over stdio/SSE)| MCPInterface
-    DatabricksAPIWrapper <-->|HTTPS REST Calls| DatabricksAPI
+    DatabricksAPIWrapper <-->|HTTPS REST Calls via SDK| DatabricksAPI
 
     style HostApp fill:#f9f,stroke:#333,stroke-width:2px
     style MCPClient fill:#ccf,stroke:#333,stroke-width:2px
@@ -46,125 +51,129 @@ graph LR
 
 **Components:**
 
-*   **MCP Host/Client:** The application (e.g., AI assistant, IDE plugin) that initiates requests to the MCP server.
-*   **Databricks MCP Server:** The core application described in this document.
-    *   **MCP Interface:** Handles communication with MCP Clients via supported transports (stdio, HTTP/SSE), parsing incoming JSON-RPC requests and formatting outgoing responses.
-    *   **Request Router:** Directs incoming MCP requests (discovery, invocation) to the appropriate handler based on the request type and method.
-    *   **Authentication Module:** Manages authentication with Databricks using configured credentials (PAT, OAuth, etc.). Obtains and refreshes tokens as necessary.
-    *   **Tool Handler:** Implements the logic for executing MCP `Tool` requests (e.g., `execute_sql`, `run_notebook`). Maps MCP tool parameters to Databricks API calls.
-    *   **Resource Handler:** Implements the logic for serving MCP `Resource` requests (e.g., `list_clusters`, `get_table_schema`). Maps MCP resource identifiers to Databricks API calls.
+*   **MCP Host/Client:** The application initiating requests.
+*   **Databricks MCP Server:**
+    *   **MCP Interface:** Handles MCP communication (stdio, potentially HTTP/SSE).
+    *   **Request Router:** Directs MCP requests to handlers.
+    *   **Authentication Module:** Manages Databricks authentication using `databricks-sdk` mechanisms (PAT, OAuth, etc.) based on configuration.
+    *   **Tool Handler:** Implements logic for MCP `Tool` requests.
+    *   **Resource Handler:** Implements logic for MCP `Resource` requests.
     *   **Prompt Handler:** Manages and serves predefined MCP `Prompt` templates.
-    *   **Databricks API Wrapper:** An internal library abstracting the specifics of calling Databricks REST APIs. Handles endpoint construction, request formatting, response parsing, and error handling.
-    *   **Server Configuration:** Stores settings like Databricks host URL, authentication credentials (securely), logging levels, etc.
-*   **Databricks Platform:** The target Databricks workspace exposing its functionalities via REST APIs.
+    *   **Error Mapper:** Translates `databricks-sdk` exceptions and API errors into standard MCP error responses.
+    *   **Databricks API Wrapper:** Internal library using `databricks-sdk` to interact with Databricks APIs. Encapsulates SDK usage, pagination, and basic request logic.
+    *   **Structured Logger:** Handles logging in a structured format (e.g., JSON) with correlation IDs and configurable levels.
+    *   **Server Configuration:** Manages externalized configuration (env vars, config files) for Databricks host, auth, logging, rate limits, etc.
+*   **Databricks Platform:** The target Databricks workspace.
 
 ## 3. Technology Stack & Project Structure
-
-This section details the recommended technologies and a potential project layout following best practices for Python MCP server development.
 
 ### 3.1 Technology Stack
 
 *   **Language:** Python 3.9+
-*   **MCP Framework:** `modelcontextprotocol/python-sdk` (specifically using its `FastMCP` implementation). This library provides decorators (`@mcp.tool()`, `@mcp.resource()`, `@mcp.prompt()`) simplifying the implementation of MCP capabilities and handling protocol details.
-*   **Databricks Interaction:** Official `databricks-sdk` for Python. This SDK simplifies authentication and interaction with the Databricks REST APIs.
-*   **Dependency Management:** `uv` (recommended by `modelcontextprotocol/python-sdk`) or `pip` with `pip-tools` for managing dependencies via `pyproject.toml` or `requirements.in` / `requirements.txt`.
-*   **Web Framework (Optional):** If implementing the HTTP/SSE transport, `FastAPI` is recommended for its performance and async capabilities. `FastMCP` might handle the server setup internally depending on usage.
-*   **Configuration Management:** Environment variables (loaded via `python-dotenv` during development) are preferred for containerized deployments. TOML (via `pyproject.toml` or a separate file) or YAML are alternatives for more complex configurations.
-*   **Testing:** `pytest` framework with `pytest-mock` for unit tests and potentially `pytest-asyncio` if using async code.
-*   **Linting/Formatting:** `ruff` (for linting and formatting) or a combination of `flake8`/`pylint` and `black`/`isort`.
-*   **Deployment:** Docker container is the recommended artifact for deployment.
+*   **MCP Framework:** `modelcontextprotocol/python-sdk` (likely installed as `pip install mcp` or `mcp-sdk`). Specifically using the `FastMCP` class (`from mcp.server.fastmcp import FastMCP`) for simplified server creation and capability registration via decorators (`@mcp.tool()`, `@mcp.resource()`, `@mcp.prompt()`).
+*   **Databricks Interaction:** Official `databricks-sdk` (`pip install databricks-sdk`).
+*   **Dependency Management:** `Poetry` (using `pyproject.toml` for managing dependencies, virtual environments, and packaging).
+*   **Web Framework (for HTTP/SSE):** `FastAPI` integrates well if HTTP transport is needed, although `FastMCP` might handle some aspects internally.
+*   **Configuration Management:** `pydantic-settings` for loading from environment variables/dotenv files, providing validation.
+*   **Logging:** Standard `logging` module configured for structured output (e.g., using `structlog` or a custom JSON formatter).
+*   **Testing:** `pytest`, `pytest-mock`, `pytest-asyncio` (if async), `databricks-sdk` mocking utilities if available, or custom mocks.
+*   **Linting/Formatting:** `ruff` (configured via `pyproject.toml`).
+*   **Deployment:** Docker container.
 
 ### 3.2 Recommended Project Structure
 
-A modular structure is recommended for maintainability and scalability:
+(Structure largely unchanged, updated main server file emphasis)
 
 ```
 databricks-mcp-server/
-├── .env.example           # Example environment variables
+├── .env.example
 ├── .gitignore
-├── Dockerfile             # For containerizing the server
-├── pyproject.toml         # Project metadata and dependencies (or requirements.txt)
+├── Dockerfile
+├── pyproject.toml
 ├── README.md
 ├── src/
 │   ├── databricks_mcp/
 │   │   ├── __init__.py
-│   │   ├── server.py        # Main FastMCP server initialization and entry point
-│   │   ├── config.py        # Configuration loading logic
-│   │   ├── databricks_client.py # Wrapper/client for databricks-sdk interactions
-│   │   ├── auth.py          # Authentication logic/setup for databricks_client
-│   │   ├── tools/           # Directory for MCP Tool implementations
+│   │   ├── server.py        # Main FastMCP server initialization & capability registration
+│   │   ├── config.py
+│   │   ├── db_client.py
+│   │   ├── error_mapping.py
+│   │   ├── logging_config.py
+│   │   ├── tools/           # Tool implementations (imported by server.py)
 │   │   │   ├── __init__.py
-│   │   │   ├── workspace.py # Workspace-related tools (e.g., run_notebook)
-│   │   │   ├── compute.py   # Compute-related tools (e.g., start_cluster)
-│   │   │   └── ...          # Other tool categories (data, ml, jobs)
-│   │   ├── resources/       # Directory for MCP Resource implementations
+│   │   │   └── ...
+│   │   ├── resources/       # Resource implementations (imported by server.py)
 │   │   │   ├── __init__.py
-│   │   │   ├── workspace.py # Workspace-related resources (e.g., list_workspace_items)
-│   │   │   ├── compute.py   # Compute-related resources (e.g., list_clusters)
-│   │   │   └── ...          # Other resource categories (data, ml, jobs)
-│   │   └── prompts/         # Optional: Directory for MCP Prompt definitions
+│   │   │   └── ...
+│   │   └── prompts/         # Prompt definitions (imported by server.py)
 │   │       ├── __init__.py
-│   │       └── code_review.py # Example prompt
-│   └── __main__.py        # Allows running the server module directly (python -m src.databricks_mcp)
-└── tests/                 # Unit and integration tests
-    ├── __init__.py
-    ├── fixtures/          # Test fixtures (e.g., mocked API responses)
-    ├── unit/              # Unit tests for handlers, client wrapper, etc.
-    │   ├── __init__.py
-    │   └── ...
-    └── integration/       # Integration tests (require Databricks connection or mock server)
-        ├── __init__.py
-        └── ...
-
+│   │       └── ...
+│   └── __main__.py        # Entry point to run server.py
+└── tests/
+    └── ...
 ```
 
 **Key Principles:**
 
-*   **Modularity:** Group related Tools and Resources into separate files within `src/databricks_mcp/tools/` and `src/databricks_mcp/resources/`.
-*   **Separation of Concerns:** The `databricks_client.py` encapsulates all direct interaction logic with the `databricks-sdk`. Handlers in `tools/` and `resources/` use this client. `config.py` handles configuration loading. `auth.py` manages authentication setup.
-*   **Discovery:** The main `server.py` imports the tool/resource modules, allowing `FastMCP` to discover the decorated functions.
-*   **Packaging:** Use standard Python packaging (`pyproject.toml` or `setup.py`/`setup.cfg`) for installable distribution if needed.
+*   **Modularity:** Group related Tools/Resources by Databricks area.
+*   **Separation of Concerns:** `db_client.py` handles SDK interactions. Handlers use the client. `config.py` manages settings. `error_mapping.py` centralizes error translation. `logging_config.py` sets up logging.
+*   **Discovery:** `FastMCP` discovers capabilities via decorators (`@mcp.tool`, etc.) when the modules containing them are imported in `server.py`.
+*   **Packaging:** Standard Python packaging via `pyproject.toml`.
 
 ## 4. Design Considerations
 
 ### 4.1. MCP Implementation
 
-*   **Protocol Compliance:** Strictly adhere to the MCP specification for discovery responses, tool/resource/prompt definitions, and request/response formats (JSON-RPC 2.0).
-*   **Transport Support:** Initially support `stdio` for local use cases. Implement HTTP/SSE transport for broader network accessibility.
-*   **Capabilities Definition:** Tools, Resources, and Prompts will be defined within the Python code using decorators provided by the chosen MCP library (e.g., `@mcp.tool()`, `@mcp.resource()`). Descriptions should be clear and informative for discovery by clients.
+*   **Protocol Compliance:** Adhere to JSON-RPC 2.0 and MCP specification using `FastMCP` from `modelcontextprotocol/python-sdk`.
+*   **Transport Support:** `FastMCP` handles `stdio` transport directly. HTTP/SSE support might require integration with FastAPI or using built-in `FastMCP` options if available.
+*   **Capabilities Definition:** Use the decorators (`@mcp.tool()`, `@mcp.resource()`, `@mcp.prompt()`) provided by the SDK on functions within the `tools/`, `resources/`, and `prompts/` modules. Ensure clear docstrings and type hints for parameters, as these are used for discovery and LLM interaction.
 
 ### 4.2. Databricks API Interaction
 
-*   **SDK Usage:** Leverage the official `databricks-sdk` for Python to simplify API interactions, authentication, and object handling.
-*   **Error Handling:** Implement robust error handling for Databricks API calls. Translate API errors (e.g., 4xx, 5xx HTTP codes, specific Databricks error codes) into appropriate MCP error responses.
-*   **Asynchronous Operations:** For potentially long-running Databricks operations initiated by Tools (e.g., `run_notebook`, `run_job_now`), the MCP server should ideally return immediately with an identifier, and potentially provide a separate Tool or mechanism to check the status later. However, the initial implementation might block until completion for simplicity, clearly documenting this behavior.
-*   **Pagination:** Handle paginated responses from Databricks APIs correctly when implementing Resource handlers (e.g., `list_tables`, `list_job_runs`).
+*   **SDK Usage:** Utilize `databricks-sdk` exclusively for all API interactions within `db_client.py`.
+*   **Error Handling:** Implement the `error_mapping.py` module as described previously, mapping `databricks-sdk` exceptions to MCP errors.
+*   **Asynchronous Operations:** Follow the recommended approach (Option 1: return ID, provide status check tool) for long-running operations, documenting clearly in tool descriptions.
+*   **Pagination:** Leverage `databricks-sdk` automatic pagination where possible. Implement manual handling in `db_client.py` if needed.
 
 ### 4.3. Authentication and Security
 
-*   **Credential Storage:** Databricks credentials (e.g., PAT) MUST NOT be hardcoded. Use secure methods like environment variables, secrets management systems, or secure configuration files with restricted permissions.
-*   **Scope:** The server operates under the permissions of the configured Databricks principal. No internal permission mapping will be performed; access control is delegated entirely to Databricks.
-*   **Input Sanitization:** While MCP itself is generally trusted, basic validation of parameters received in MCP requests (e.g., types, expected formats) is advisable before passing them to the Databricks API wrapper.
+*   **Credential Management:** Rely on `databricks-sdk` credential providers. Configure via environment variables / `config.py`.
+*   **Permissions:** Delegate to Databricks. Map permission errors correctly.
+*   **Input Validation:** Use Pydantic for basic validation via type hints in decorated functions. Add specific checks within function bodies if required.
+*   **Secrets Tool (`get_secret`):** Make registration conditional via `ENABLE_GET_SECRET` flag in `server.py`.
+*   **Rate Limiting:** Implement if using HTTP transport (e.g., via FastAPI middleware).
 
 ### 4.4. Configuration
 
-*   **Required:** Databricks Host URL, Authentication Method (e.g., 'pat', 'oauth'), Credentials.
-*   **Optional:** Logging level, specific transport configurations (e.g., HTTP port).
-*   Use environment variables as the primary configuration mechanism, suitable for containerized deployments.
+*   Use `pydantic-settings` in `config.py` as described.
+*   Load from environment variables / `.env`.
+*   Inject configuration where needed.
 
-### 4.5. Testing
+### 4.5. Logging (NFR-REL-02)
 
-*   **Unit Tests:** Test individual modules (handlers, API wrapper logic) using mocking for Databricks API calls and MCP framework interactions.
-*   **Integration Tests:** Test the end-to-end flow from receiving an MCP request to interacting with a *test* Databricks workspace (requires careful setup and teardown, or using mocked API endpoints).
+*   Implement structured logging (JSON) via `logging_config.py`.
+*   Configure level via `LOG_LEVEL`.
+*   Include correlation IDs.
+*   Mask sensitive data.
+
+### 4.6. Testing (NFR-MAINT-01)
+
+*   Mock `db_client.py` for unit tests.
+*   Focus on testing handlers, error mapping, configuration.
+*   Consider integration tests carefully against a non-production environment or using recorded API interactions.
+*   Aim for high unit test coverage.
 
 ## 5. Deployment
 
-*   **Containerization:** Package the server as a Docker image for easy deployment and dependency management.
-*   **Execution:** Can be run as a standalone process (interacting via `stdio`) or as a network service (if HTTP/SSE is implemented).
-*   **Process Management:** Use a process manager (like `systemd` or a container orchestrator like Kubernetes) for production deployments to ensure reliability and restarts.
+*   **Containerization:** `Dockerfile` using standard Python image, installing dependencies, copying `src`.
+*   **Entry Point:** `CMD ["python", "-m", "src.databricks_mcp"]` (assuming `__main__.py` imports and runs the `FastMCP` instance from `server.py`).
+*   **Configuration:** Via environment variables.
+*   **Transport:** Default `stdio`. Expose port if HTTP is configured.
+*   **Process Management:** Standard tools (Kubernetes, systemd, etc.).
 
 ## 6. Future Enhancements
 
-*   **OAuth Support:** Implement OAuth 2.0 flows for more secure and user-friendly authentication compared to PATs.
-*   **Configuration Profiles:** Allow selection of different Databricks environments (dev/staging/prod) via configuration.
-*   **Caching:** Implement optional caching for frequently accessed, slow-changing resources (e.g., cluster lists) with appropriate TTLs. 
+*   Implement OAuth 2.0 login flow if required (more complex than PAT/basic auth).
+*   Add support for Databricks configuration profiles (`~/.databrickscfg`).
+*   Implement optional response caching for read-only, static resources.
+*   Support creating/updating Databricks resources (Jobs, Clusters etc.) via dedicated tools. 

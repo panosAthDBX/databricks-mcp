@@ -1,91 +1,103 @@
-import logging
-import sys
+import structlog
+from mcp.server.fastmcp import FastMCP
 
-from mcp import FastMCP
-from mcp.server.cli import run_stdio_server
+from . import resources  # Import the resources package
 
-from .config import load_config
-from .auth import get_authenticated_client
-from .databricks_client import DatabricksAPIClient
+# Import error mapper (though not used directly here, tools/resources will use it)
+# from .error_mapping import map_databricks_errors
+# Import tool/resource modules here later when they are created
+from . import tools  # Import the tools package
+from .config import settings  # Import settings instance
 
-# Import resource and tool modules so FastMCP can discover the decorated functions
-# These imports need to happen *before* mcp.run() or similar
-from . import resources # Parent package import
-from .resources import workspace as workspace_resources # Example explicit
-from .resources import compute as compute_resources
-from .resources import data as data_resources
-from .resources import ml as ml_resources
-from .resources import jobs as job_resources
+# Import db_client to trigger initialization early (optional, but good for startup check)
+from .db_client import get_db_client
 
-from . import tools
-from .tools import workspace as workspace_tools # Example explicit
-from .tools import compute as compute_tools
-from .tools import data as data_tools
-from .tools import ml as ml_tools
-from .tools import jobs as job_tools
+# e.g., from . import prompts
 
-# Import prompts if any (optional)
+log = structlog.get_logger(__name__)
+
+# Initialize the FastMCP server instance
+# The server_name should be unique if multiple MCP servers are used together.
+mcp = FastMCP(server_name="databricks")
+
+# --- Register Tools, Resources, Prompts ---
+# Compute Capabilities
+mcp.register(resources.compute.list_clusters)
+mcp.register(resources.compute.get_cluster_details)
+mcp.register(tools.compute.start_cluster)
+mcp.register(tools.compute.terminate_cluster)
+
+# Workspace & Repo Capabilities
+mcp.register(resources.workspace.list_workspace_items)
+mcp.register(resources.workspace.get_notebook_content)
+mcp.register(resources.workspace.list_repos)
+mcp.register(resources.workspace.get_repo_status)
+mcp.register(tools.workspace.run_notebook)
+mcp.register(tools.workspace.execute_code)
+
+# Data & SQL Capabilities
+mcp.register(resources.data.list_catalogs)
+mcp.register(resources.data.list_schemas)
+mcp.register(resources.data.list_tables)
+mcp.register(resources.data.get_table_schema)
+mcp.register(resources.data.preview_table)
+mcp.register(resources.data.list_sql_warehouses)
+mcp.register(tools.data.execute_sql)
+mcp.register(tools.data.get_statement_result)
+mcp.register(tools.data.start_sql_warehouse)
+mcp.register(tools.data.stop_sql_warehouse)
+
+# Job Capabilities
+mcp.register(resources.jobs.list_jobs)
+mcp.register(resources.jobs.get_job_details)
+mcp.register(resources.jobs.list_job_runs)
+mcp.register(tools.jobs.run_job_now)
+
+# File Management Capabilities
+mcp.register(resources.files.list_files)
+mcp.register(tools.files.read_file)
+mcp.register(tools.files.write_file)
+mcp.register(tools.files.delete_file)
+mcp.register(tools.files.create_directory)
+
+# AI/ML Capabilities
+mcp.register(resources.ml.list_mlflow_experiments)
+mcp.register(resources.ml.list_mlflow_runs)
+mcp.register(resources.ml.get_mlflow_run_details)
+mcp.register(resources.ml.list_registered_models)
+mcp.register(resources.ml.get_model_version_details)
+mcp.register(tools.ml.query_model_serving_endpoint)
+mcp.register(tools.ml.add_to_vector_index)
+mcp.register(tools.ml.query_vector_index)
+
+# Secrets Management Capabilities
+mcp.register(resources.secrets.list_secret_scopes)
+mcp.register(resources.secrets.list_secrets)
+mcp.register(tools.secrets.put_secret)
+mcp.register(tools.secrets.delete_secret)
+# Conditionally register the sensitive get_secret tool
+if settings.enable_get_secret:
+    log.warning("Registering sensitive tool: databricks:secrets:get_secret")
+    mcp.register(tools.secrets.get_secret)
+else:
+    log.info("Tool databricks:secrets:get_secret is disabled by configuration.")
+
+# Example Prompts (Optional)
 # from . import prompts
-# from .prompts import code_review as code_review_prompts
+# mcp.register(prompts.example_prompt.example_analyze_data_prompt)
 
+# -----------------------------------------
 
-# Configure basic logging
-logging.basicConfig(
-    level=logging.INFO, # Adjust level as needed (DEBUG, INFO, WARNING, ERROR)
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=sys.stderr, # MCP often communicates via stdout, so log to stderr
-)
-logger = logging.getLogger("databricks_mcp.server")
+log.info("FastMCP server instance created", server_name=mcp.server_name)
 
+# Perform an initial check of the Databricks client during server setup
+try:
+    get_db_client() # This will initialize if not already done and run the check
+    log.info("Initial Databricks connection check successful.")
+except Exception:
+    # Error is already logged by get_db_client, just note failure
+    log.critical("Databricks connection check FAILED during server setup. Server might not function correctly.")
+    # Depending on desired behavior, we could exit here, but FastMCP might handle startup differently.
+    # For now, allow it to continue starting but log critical failure.
 
-# Initialize the MCP Server
-# The name is used for identification by MCP clients
-mcp_server = FastMCP(name="Databricks MCP Server")
-
-# --- Global State / Context --- 
-# It's often useful to have globally accessible state, like the API client.
-# FastMCP allows adding context that can be accessed within tools/resources.
-
-def setup_server_context():
-    """Loads config, authenticates, and sets up global context."""
-    try:
-        config = load_config()
-        workspace_client = get_authenticated_client(config)
-        api_client = DatabricksAPIClient(workspace_client)
-        
-        # Add the api_client to the MCP server's context
-        # It can be accessed in tools/resources via `mcp.context.api_client`
-        mcp_server.context["api_client"] = api_client
-        logger.info("Server context (including Databricks API client) initialized.")
-        return True
-    except (ValueError, ConnectionError) as e:
-        logger.critical(f"Failed to initialize server context: {e}", exc_info=True)
-        # Exit cleanly if core setup fails
-        sys.exit(f"Error: Server initialization failed - {e}") 
-    except Exception as e:
-        logger.critical(f"Unexpected error during server context setup: {e}", exc_info=True)
-        sys.exit(f"Error: Unexpected server initialization failure - {e}")
-
-# --- Tool/Resource/Prompt Registration --- 
-# FastMCP uses decorators (@mcp.tool, @mcp.resource, @mcp.prompt)
-# By importing the modules where these decorators are used (as done above),
-# FastMCP automatically discovers and registers them.
-
-# --- Server Entry Point --- 
-def main():
-    """Main entry point to run the MCP server."""
-    logger.info("Starting Databricks MCP Server setup...")
-    
-    # Setup global context before starting the server
-    setup_server_context()
-    
-    logger.info("Databricks MCP Server ready. Running via stdio...")
-    # Run the server using the standard stdio transport method
-    # This is common for local integrations (like IDE plugins)
-    # For HTTP/SSE, different setup would be needed.
-    run_stdio_server(mcp_server)
-
-if __name__ == "__main__":
-    # This allows running the server directly using `python -m src.databricks_mcp`
-    # or if this file itself is executed.
-    main() 
+# The 'mcp' instance will be imported and run by __main__.py
