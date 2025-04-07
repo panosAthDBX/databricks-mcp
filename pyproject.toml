@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=61.0", "poetry-core>=1.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "databricks-mcp-server"
+version = "0.1.0"
+description = "MCP Server for Databricks Interaction"
+readme = "README.md"
+license = "MIT" # Or your chosen license
+authors = [
+  "Your Name / Team Name <your@email.com>",
+]
+packages = [{include = "databricks_mcp", from = "src"}]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License", # Adjust if needed
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+# Use the correct package name 'mcp'
+mcp = {extras = ["cli"], version = ">=1.0.0,<2.0.0"}
+databricks-sdk = ">=0.20.0,<1.0.0"
+python-dotenv = ">=1.0.0,<2.0.0"
+pydantic = "^2.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.0.0,<8.0.0"
+pytest-mock = ">=3.0.0,<4.0.0"
+ruff = ">=0.1.0,<1.0.0" # Check for latest appropriate version
+pytest-asyncio = "*" # If using async tests
+
+[tool.poetry.urls]
+Homepage = "https://github.com/your-username/databricks-mcp-server" # Example URL
+Repository = "https://github.com/your-username/databricks-mcp-server" # Example URL
+
+# [tool.poetry.scripts]
+# If you want a command-line entry point later
+# databricks-mcp = "databricks_mcp.server:main"
+
+# -----------------------
+# Ruff Configuration (Using nested tables again)
+# -----------------------
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+src = ["src"]
+
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf" 

@@ -1,0 +1,177 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Project Rules for Databricks MCP Server (Cursor/Ruff)
+
+This document outlines recommended linting and formatting rules for the Databricks MCP Server project, intended for use with the Ruff linter/formatter, commonly integrated into environments like Cursor. Configuration is typically managed via the `pyproject.toml` file.
+
+## 1. General Philosophy
+
+*   **Clarity and Readability:** Code should be easy to understand and maintain.
+*   **Robustness:** Prevent common errors and handle edge cases appropriately.
+*   **Security:** Avoid known security pitfalls.
+*   **Consistency:** Maintain a consistent style across the codebase.
+*   **Performance:** Be mindful of performance implications where relevant.
+
+## 2. Configuration (`pyproject.toml`)
+
+A base configuration in `pyproject.toml` might look like this:
+
+```toml
+[tool.ruff]
+# Set the maximum line length.
+line-length = 100
+# Assume Python 3.9+ compatibility.
+target-version = "py39"
+
+[tool.ruff.lint]
+# Define the rule sets to enable.
+# Start with defaults (F, E) and add recommended sets.
+select = [
+    "F",  # Pyflakes (essential errors)
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings (use judiciously, some overlap with formatter)
+    "I",  # isort (import sorting)
+    "N",  # pep8-naming
+    "UP", # pyupgrade (modernize syntax)
+    "B",  # flake8-bugbear (potential bugs/design problems)
+    "A", # flake8-builtins (shadowing builtins)
+    "C4", # flake8-comprehensions (nicer comprehensions)
+    "SIM",# flake8-simplify (simplify code)
+    "ARG",# flake8-unused-arguments
+    "PL", # Pylint (select specific rules, see below)
+    "RUF",# Ruff-specific rules
+    "S",  # flake8-bandit (security issues)
+    "ASYNC", # flake8-async (async best practices)
+    "T20", # flake8-print (discourage print)
+    "TRY", # tryceratops (exception handling best practices)
+    # "ANN", # flake8-annotations (consider enabling later for stricter typing)
+    # "ERA", # eradicate (commented out code)
+    # "PD",  # pandas-vet (if using pandas heavily)
+    # "NPY", # NumPy-specific rules (if using numpy heavily)
+]
+
+# Ignore specific rules if necessary.
+# E501 is often handled by the formatter.
+ignore = ["E501"]
+
+# Configure specific rule sets
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 100
+
+[tool.ruff.lint.pylint]
+# Enable specific high-value Pylint rules
+select = [
+    "PLE", # Pylint Errors
+    "PLW", # Pylint Warnings (selectively enable/disable)
+    # Examples of specific rules to consider:
+    "PLR0911", # Too many return statements
+    "PLR0912", # Too many branches
+    "PLR0913", # Too many arguments
+    "PLR0915", # Too many statements
+    "PLC0415", # Import outside toplevel
+]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+known-first-party = ["databricks_mcp"]
+
+[tool.ruff.lint.flake8-unused-arguments]
+ignore-variadic-names = true
+
+# Enable autofix for selected rules where safe.
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.format]
+# Configure the formatter (similar to Black)
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+
+```
+
+## 3. Key Rule Categories & Examples
+
+This is not exhaustive, but highlights rules relevant to server development:
+
+### 3.1. Error Prevention (Pyflakes - `F`, pycodestyle - `E`, Pylint - `PLE`)
+
+*   `F841`: Unused local variable
+*   `F821`: Undefined name
+*   `F401`: Unused import
+*   `E711`: Comparison to `None` should be `is None`
+*   `E712`: Comparison to `True`/`False` should be `if cond is True/False`
+*   `PLE1142`: `await` used outside `async function`
+
+### 3.2. Code Clarity & Simplification (flake8-bugbear - `B`, flake8-simplify - `SIM`, pyupgrade - `UP`, Pylint - `PLR`)
+
+*   `B006`: Do not use mutable data structures for argument defaults.
+*   `B008`: Do not perform function calls in argument defaults.
+*   `B010`: Do not call `setattr` with a constant attribute value.
+*   `SIM108`: Use `if x:` instead of `if x is True:`
+*   `SIM110`: Convert `if a else True` to `not a`
+*   `SIM117`: Use `with` for multiple context managers
+*   `UP007`: Use `X | Y` for type annotations (Python 3.10+)
+*   `UP032`: Use f-strings
+*   `PLR1722`: Use `sys.exit()` instead of `exit()`
+*   `PLR091X`: Complexity rules (arguments, branches, statements, returns) - Configure thresholds appropriately.
+
+### 3.3. Security (flake8-bandit - `S`)
+
+*   `S101`: Use of `assert` detected (often disabled in production)
+*   `S105`: Hardcoded password string
+*   `S106`: Hardcoded password func arg
+*   `S110`: `try...except...pass` detected
+*   `S113`: Request without timeout specified (for libraries like `requests`)
+*   `S311`: `random` module is not cryptographically secure (use `secrets` for security contexts)
+*   `S501`: Request with `verify=False` (disables SSL verification)
+*   `S603`: `subprocess` call with shell=True
+*   `S608`: Hardcoded SQL expressions (potential injection)
+
+### 3.4. Async Best Practices (flake8-async - `ASYNC`)
+
+*   `ASYNC100`: `async function` definition without `await`
+*   `ASYNC101`: `async function` definition with `return` instead of `await`
+*   `ASYNC115`: Dangling `asyncio.create_task` without assignment (potential lost exceptions)
+
+### 3.5. Naming and Style (pep8-naming - `N`, pycodestyle - `W`)
+
+*   `N801`: Class names should use CapWords
+*   `N802`: Function name should be lowercase
+*   `N806`: Variable in function should be lowercase
+*   `W291`: Trailing whitespace
+*   `W292`: No newline at end of file
+*   `W293`: Blank line contains whitespace
+
+### 3.6. Import Management (isort - `I`)
+
+*   Ensures imports are grouped (stdlib, third-party, first-party) and sorted alphabetically.
+*   `I001`: Import block is un-sorted or un-formatted
+
+### 3.7. Exception Handling (tryceratops - `TRY`)
+
+*   `TRY002`: Create custom exception classes instead of raising generic `Exception`.
+*   `TRY003`: Avoid specifying long messages outside exception class.
+*   `TRY200`: Use `raise ... from err` for exception chaining.
+*   `TRY300`: Avoid `try...except...pass`.
+*   `TRY400`: Avoid logging error messages redundantly before raising.
+
+### 3.8. Discouraged Patterns (flake8-print - `T20`, flake8-builtins - `A`)
+
+*   `T201`: `print` found (use logging instead in server applications).
+*   `A001`: Variable name shadows a built-in.
+
+## 4. Usage in Cursor
+
+1.  Ensure `ruff` is installed in your project's environment (`uv add ruff` or `pip install ruff`).
+2.  Place the `pyproject.toml` file in the root of your workspace.
+3.  Cursor should automatically detect `ruff` and `pyproject.toml` if its Ruff extension/integration is enabled.
+4.  Linting errors/warnings will appear in the editor.
+5.  Use Cursor's format-on-save feature or code actions to apply formatting and fixes. 
+
+## 5. State management
+1. Whenever a task is executed, update the implementation-plan.md to capture the state of play.
