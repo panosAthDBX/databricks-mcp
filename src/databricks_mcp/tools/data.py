@@ -47,7 +47,8 @@ def execute_sql(sql_query: str, warehouse_id: str, catalog: str | None = None, s
         catalog=catalog,
         schema=schema,
         wait_timeout="0s", # Ensures the call returns immediately
-        disposition=sql_service.Disposition.EXTERNAL_LINKS,
+        disposition=sql_service.Disposition.INLINE, # Try INLINE for direct results
+        format=sql_service.Format.JSON_ARRAY, # JSON_ARRAY is most compatible
     )
 
     statement_id = resp.statement_id
@@ -84,19 +85,106 @@ def get_statement_result(statement_id: str) -> dict:
     error_message = None
 
     if status == sql_service.StatementState.SUCCEEDED.value:
-        log.debug("Statement succeeded, fetching result chunk", statement_id=statement_id)
-        # Fetch the first chunk of results. Pagination might be needed for large results.
-        # The SDK might handle this internally, or we might need chunk_index param.
-        # For now, fetch the first chunk (index 0).
-        chunk = db.statement_execution.get_statement_result_chunk_n(statement_id=statement_id, chunk_index=0)
-        if chunk.result and chunk.result.data_array:
-            if chunk.result.manifest and chunk.result.manifest.schema and chunk.result.manifest.schema.columns:
-                columns = [col.name for col in chunk.result.manifest.schema.columns]
-                result_schema = [col.as_dict() for col in chunk.result.manifest.schema.columns] # Provide schema info
-                result_data = [dict(zip(columns, row)) for row in chunk.result.data_array]
-            else:
-                result_data = chunk.result.data_array # Return raw array if no schema
-                log.warning("Could not get column names for statement result", statement_id=statement_id)
+        log.debug("Statement succeeded, handling results appropriately", statement_id=statement_id)
+        
+        # Let's first check what we've received
+        log.info(
+            "Statement response object structure",
+            statement_id=statement_id, 
+            has_result=hasattr(statement, 'result'),
+            has_manifest=hasattr(statement, 'manifest')
+        )
+        
+        try:
+            # First check for inline results
+            if hasattr(statement, 'result'):
+                log.info("Statement has result property", statement_id=statement_id)
+                
+                # Check for external links (EXTERNAL_LINKS disposition)
+                if hasattr(statement.result, 'external_links') and statement.result.external_links:
+                    log.info("External links found - data is stored externally", 
+                             statement_id=statement_id, 
+                             link_count=len(statement.result.external_links))
+                    
+                    # Note: To actually fetch this data we would need to download from the link
+                    # For simplicity, we'll just return the link information in the response
+                    result_data = [
+                        {
+                            "chunk_index": link.chunk_index,
+                            "row_count": link.row_count,
+                            "external_link_available": True,
+                            # Don't include the actual link in response as it might contain sensitive info
+                        }
+                        for link in statement.result.external_links
+                    ]
+                    
+                # Check for inline data array (INLINE disposition)
+                elif hasattr(statement.result, 'data_array') and statement.result.data_array:
+                    log.info("Inline data_array found", 
+                             statement_id=statement_id, 
+                             row_count=len(statement.result.data_array))
+                    result_data = statement.result.data_array
+            
+            # Get schema information from manifest
+            if hasattr(statement, 'manifest') and statement.manifest:
+                log.info("Statement has manifest with schema", statement_id=statement_id)
+                
+                if (hasattr(statement.manifest, 'schema') and 
+                    statement.manifest.schema and 
+                    hasattr(statement.manifest.schema, 'columns')):
+                    
+                    columns = statement.manifest.schema.columns
+                    result_schema = [
+                        {
+                            "name": col.name,
+                            "type": col.type_text if hasattr(col, 'type_text') else None,
+                            "position": col.position if hasattr(col, 'position') else None
+                        }
+                        for col in columns
+                    ]
+                    
+                    # If we have schema and raw data_array, create dict result
+                    if result_data and isinstance(result_data, list) and not isinstance(result_data[0], dict):
+                        column_names = [col.name for col in columns]
+                        result_data = [dict(zip(column_names, row)) for row in result_data]
+                        log.info("Transformed raw data into dictionary format with schema", 
+                                 statement_id=statement_id,
+                                 row_count=len(result_data))
+            
+            # If still no result_data, try fetching chunk as fallback
+            if result_data is None:
+                log.debug("No result data in statement response, trying to fetch chunk", statement_id=statement_id)
+                try:
+                    chunk = db.statement_execution.get_statement_result_chunk_n(
+                        statement_id=statement_id, chunk_index=0
+                    )
+                    
+                    if hasattr(chunk, 'data_array') and chunk.data_array:
+                        log.info("Retrieved data from chunk", 
+                                 statement_id=statement_id,
+                                 row_count=len(chunk.data_array))
+                        result_data = chunk.data_array
+                        
+                        # If we have schema already, apply it to the chunk data
+                        if result_schema and isinstance(result_data[0], list):
+                            column_names = [col["name"] for col in result_schema]
+                            result_data = [dict(zip(column_names, row)) for row in result_data]
+                except Exception as e:
+                    log.warning(
+                        "Failed to fetch chunk data - this is normal for EXTERNAL_LINKS disposition",
+                        statement_id=statement_id,
+                        error=str(e)
+                    )
+                
+            # If we still don't have result_data, provide a status message
+            if result_data is None:
+                result_data = [{"message": "Query completed successfully but no data available. Results may be available via external links."}]
+                log.info("No data could be directly retrieved - likely external link disposition", statement_id=statement_id)
+                
+        except Exception as e:
+            log.error("Error processing statement results", statement_id=statement_id, error=str(e), exc_info=True)
+            # Provide a helpful error message in the result
+            result_data = [{"error": f"Error processing results: {str(e)}"}]
 
     elif status == sql_service.StatementState.FAILED.value:
          error_message = statement.status.error.message if statement.status and statement.status.error else "Unknown error"
