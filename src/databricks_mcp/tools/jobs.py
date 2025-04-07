@@ -1,54 +1,21 @@
 import structlog
-from mcp import Parameter
-from mcp import Tool
-from mcp import parameters
+# Import the mcp instance from app.py
+from ..app import mcp
 
 from ..db_client import get_db_client
 from ..error_mapping import map_databricks_errors
+from databricks.sdk.service import jobs as jobs_service
 
 log = structlog.get_logger(__name__)
 
 @map_databricks_errors
-@Tool.from_callable(
-    "databricks:jobs:run_now",
+@mcp.tool(
+    name="databricks:jobs:run_now",
     description=(
         "Triggers a specific Databricks Job to run immediately and waits for its completion. "
         "Optional parameters can be provided to override job settings for this run. "
         "NOTE: This tool currently blocks until the job run finishes, fails, or times out."
     ),
-    parameters=[
-        Parameter(
-            name="job_id",
-            description="The unique identifier of the job to run.",
-            param_type=parameters.IntegerType,
-            required=True,
-        ),
-        Parameter(
-            name="notebook_params",
-            description="Optional dictionary of notebook parameters to override for this run.",
-            param_type=parameters.ObjectType(properties={}),
-            required=False,
-        ),
-        Parameter(
-            name="python_params",
-            description="Optional list of string arguments to pass to a Python script task for this run.",
-            param_type=parameters.ArrayType(items=parameters.StringType),
-            required=False,
-        ),
-        Parameter(
-            name="jar_params",
-            description="Optional list of string arguments to pass to a JAR task for this run.",
-            param_type=parameters.ArrayType(items=parameters.StringType),
-            required=False,
-        ),
-        Parameter(
-            name="spark_submit_params",
-            description="Optional list of string arguments to pass to a Spark submit task for this run.",
-            param_type=parameters.ArrayType(items=parameters.StringType),
-            required=False,
-        ),
-        # Add other override parameters if needed (e.g., python_named_params, sql_params)
-    ]
 )
 def run_job_now(
     job_id: int,
@@ -60,6 +27,13 @@ def run_job_now(
     """
     Triggers a specific job to run immediately and waits for completion.
     REQ-JOB-TOOL-01
+
+    Args:
+        job_id: The unique identifier of the job to run.
+        notebook_params: Optional dictionary of notebook parameters to override.
+        python_params: Optional list of string arguments for a Python script task.
+        jar_params: Optional list of string arguments for a JAR task.
+        spark_submit_params: Optional list of string arguments for a Spark submit task.
     """
     db = get_db_client()
     log.info("Running Databricks Job now", job_id=job_id, notebook_params=notebook_params, python_params=python_params)

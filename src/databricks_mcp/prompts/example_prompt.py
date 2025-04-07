@@ -1,6 +1,7 @@
 import structlog
-from mcp import Prompt
-from mcp import parameters
+# Import the mcp instance from app.py
+from ..app import mcp
+from mcp import Prompt, parameters
 
 log = structlog.get_logger(__name__)
 

@@ -10,7 +10,6 @@ from databricks_mcp.tools.files import (
     create_directory
 )
 from databricks_mcp.db_client import get_db_client # To mock
-from mcp import errors as mcp_errors
 
 # Mock the get_db_client function
 @pytest.fixture(autouse=True)

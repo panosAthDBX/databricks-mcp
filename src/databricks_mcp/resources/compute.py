@@ -1,7 +1,7 @@
 import structlog
-from mcp import Parameter
-from mcp import Resource
-from mcp import parameters
+# Import the mcp instance from app.py
+from ..app import mcp
+from databricks.sdk.service import compute as compute_service
 
 from ..db_client import get_db_client
 from ..error_mapping import map_databricks_errors
@@ -9,10 +9,10 @@ from ..error_mapping import map_databricks_errors
 log = structlog.get_logger(__name__)
 
 @map_databricks_errors
-@Resource.from_callable(
+# Use @mcp.resource decorator with URI as first arg
+@mcp.resource(
     "databricks:compute:list_clusters",
     description="Lists all available Databricks clusters in the workspace.",
-    parameters=[], # No parameters needed for listing all clusters
 )
 def list_clusters() -> list[dict]:
     """
@@ -39,30 +39,24 @@ def list_clusters() -> list[dict]:
     return result
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:compute:get_cluster_details",
+# Use @mcp.resource decorator with URI as first arg
+@mcp.resource(
+    "databricks:compute:get_cluster_details/{cluster_id}",
     description="Gets detailed information about a specific Databricks cluster.",
-    parameters=[
-        Parameter(
-            name="cluster_id",
-            description="The unique identifier of the cluster.",
-            param_type=parameters.StringType,
-            required=True,
-        )
-    ]
 )
 def get_cluster_details(cluster_id: str) -> dict:
     """
     Gets detailed information about a specific cluster.
     REQ-COMP-RES-02
+
+    Args:
+        cluster_id: The unique identifier of the cluster.
     """
     db = get_db_client()
     log.info("Getting details for Databricks cluster", cluster_id=cluster_id)
     cluster_info = db.clusters.get(cluster_id=cluster_id)
 
     # Convert the ClusterInfo object to a dictionary for MCP serialization.
-    # We might need a more robust way to handle nested objects/enums if needed.
-    # For now, converting basic fields and state enum.
     details = {
         "cluster_id": cluster_info.cluster_id,
         "creator_user_name": cluster_info.creator_user_name,

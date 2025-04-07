@@ -5,17 +5,19 @@ from .logging_config import setup_logging
 
 setup_logging()
 
-log = structlog.get_logger(__name__)
+log = structlog.get_logger("main")
 
-# Import the configured FastMCP instance from server.py
-from .server import mcp
+# Import server module first to ensure all decorators run and register capabilities
+from . import server
+# Import the central FastMCP instance from app.py
+from .app import mcp
 
 
 def main():
     log.info("Starting Databricks MCP Server...")
     try:
-        # Run the FastMCP server (this typically blocks, handling stdio)
-        mcp.run()
+        # Run the FastMCP server (which now has registered capabilities)
+        mcp.run("sse")
         log.info("Databricks MCP Server finished.")
     except Exception as e:
         log.critical("Databricks MCP Server exited with an error", error=str(e), exc_info=True)

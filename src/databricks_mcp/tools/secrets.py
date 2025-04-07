@@ -1,10 +1,9 @@
 import base64
 
 import structlog
-from mcp import Parameter
-from mcp import Tool
-from mcp import errors as mcp_errors
-from mcp import parameters
+# Import the mcp instance from app.py
+from ..app import mcp
+# from mcp import errors as mcp_errors # Removed unused import
 
 from ..config import settings  # Needed for conditional registration check
 from ..db_client import get_db_client
@@ -13,31 +12,28 @@ from ..error_mapping import map_databricks_errors
 log = structlog.get_logger(__name__)
 
 @map_databricks_errors
-@Tool.from_callable(
-    "databricks:secrets:get_secret",
+@mcp.tool(
+    name="databricks:secrets:get_secret",
     description=(
         "Retrieves the value of a secret. WARNING: This exposes sensitive information. "
         "Use with extreme caution and ensure the server is appropriately secured."
     ),
-    parameters=[
-        Parameter(name="scope_name", description="The name of the secret scope.", param_type=parameters.StringType, required=True),
-        Parameter(name="key", description="The key name of the secret.", param_type=parameters.StringType, required=True),
-    ]
 )
 def get_secret(scope_name: str, key: str) -> dict:
     """
     Retrieves the value of a secret.
     REQ-SEC-TOOL-01
     WARNING: Exposes sensitive data. Should be conditionally registered based on config.
+
+    Args:
+        scope_name: The name of the secret scope.
+        key: The key name of the secret.
     """
     # Double-check config even if conditionally registered, as an extra layer
     if not settings.enable_get_secret:
         log.warning("Attempted to call get_secret tool but it is disabled by configuration.")
-        # Raise a specific permission-like error if disabled
-        raise mcp_errors.MCPError(
-            code=mcp_errors.ErrorCode.SERVER_ERROR_PERMISSION_DENIED,
-            message="Getting secret values is disabled by server configuration."
-        )
+        # Raise a standard Python error. The error mapper decorator will handle conversion.
+        raise PermissionError("Getting secret values is disabled by server configuration.")
 
     db = get_db_client()
     log.warning("Retrieving secret value (SECURITY SENSITIVE)", scope=scope_name, key=key) # Log sensitive operation clearly
@@ -56,19 +52,19 @@ def get_secret(scope_name: str, key: str) -> dict:
 
 
 @map_databricks_errors
-@Tool.from_callable(
-    "databricks:secrets:put_secret",
+@mcp.tool(
+    name="databricks:secrets:put_secret",
     description="Creates or updates a secret with a string value.",
-    parameters=[
-        Parameter(name="scope_name", description="The name of the secret scope.", param_type=parameters.StringType, required=True),
-        Parameter(name="key", description="The key name of the secret.", param_type=parameters.StringType, required=True),
-        Parameter(name="secret_value", description="The string value to store in the secret.", param_type=parameters.StringType, required=True),
-    ]
 )
 def put_secret(scope_name: str, key: str, secret_value: str) -> dict:
     """
     Creates or updates a secret with a string value.
     REQ-SEC-TOOL-02
+
+    Args:
+        scope_name: The name of the secret scope.
+        key: The key name of the secret.
+        secret_value: The string value to store in the secret.
     """
     db = get_db_client()
     log.info("Putting secret", scope=scope_name, key=key)
@@ -82,18 +78,18 @@ def put_secret(scope_name: str, key: str, secret_value: str) -> dict:
 
 
 @map_databricks_errors
-@Tool.from_callable(
-    "databricks:secrets:delete_secret",
+@mcp.tool(
+    name="databricks:secrets:delete_secret",
     description="Deletes a secret.",
-    parameters=[
-        Parameter(name="scope_name", description="The name of the secret scope.", param_type=parameters.StringType, required=True),
-        Parameter(name="key", description="The key name of the secret to delete.", param_type=parameters.StringType, required=True),
-    ]
 )
 def delete_secret(scope_name: str, key: str) -> dict:
     """
     Deletes a secret.
     REQ-SEC-TOOL-03
+
+    Args:
+        scope_name: The name of the secret scope.
+        key: The key name of the secret to delete.
     """
     db = get_db_client()
     log.info("Deleting secret", scope=scope_name, key=key)

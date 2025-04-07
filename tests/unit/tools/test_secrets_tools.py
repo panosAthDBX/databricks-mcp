@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 from databricks.sdk.service import secrets as secrets_service
-from mcp import errors as mcp_errors
+# from mcp import errors as mcp_errors # Removed incorrect import
 
 from databricks_mcp.tools.secrets import delete_secret
 from databricks_mcp.tools.secrets import get_secret

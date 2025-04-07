@@ -1,10 +1,10 @@
 import pytest
 from unittest.mock import MagicMock, patch
+from databricks.sdk.service import compute as compute_service
 from databricks.sdk.errors import NotFound
 
 from databricks_mcp.tools.compute import start_cluster, terminate_cluster
 from databricks_mcp.db_client import get_db_client # To mock
-from mcp import errors as mcp_errors # For asserting error types
 
 # Mock the get_db_client function used by the tools
 @pytest.fixture(autouse=True)
@@ -43,11 +43,11 @@ def test_start_cluster_sdk_error_mapped(mock_db_client):
     mock_db_client.clusters.start.side_effect = sdk_error
 
     # Act & Assert: Check if the correct MCPError is raised
-    with pytest.raises(mcp_errors.MCPError) as exc_info:
+    with pytest.raises(MCPError) as exc_info:
         start_cluster(cluster_id="not-found")
 
     # Assert error details (mapped by error_mapping decorator)
-    assert exc_info.value.code == mcp_errors.ErrorCode.SERVER_ERROR_RESOURCE_NOT_FOUND
+    assert exc_info.value.code == ErrorCode.SERVER_ERROR_RESOURCE_NOT_FOUND
     assert "Cluster not found" in exc_info.value.message
     mock_db_client.clusters.start.assert_called_once_with(cluster_id="not-found")
     # Ensure result() wasn't called if start failed immediately
@@ -72,10 +72,10 @@ def test_terminate_cluster_sdk_error_mapped(mock_db_client):
     mock_db_client.clusters.delete.side_effect = sdk_error
 
     # Act & Assert
-    with pytest.raises(mcp_errors.MCPError) as exc_info:
+    with pytest.raises(MCPError) as exc_info:
         terminate_cluster(cluster_id="gone")
 
-    assert exc_info.value.code == mcp_errors.ErrorCode.SERVER_ERROR_RESOURCE_NOT_FOUND
+    assert exc_info.value.code == ErrorCode.SERVER_ERROR_RESOURCE_NOT_FOUND
     assert "Cannot terminate non-existent cluster" in exc_info.value.message
     mock_db_client.clusters.delete.assert_called_once_with(cluster_id="gone")
     # mock_db_client.clusters.delete.return_value.result.assert_not_called()

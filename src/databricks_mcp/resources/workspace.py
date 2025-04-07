@@ -1,10 +1,10 @@
 import base64
 
 import structlog
-from databricks.sdk.service import workspace as workspace_service
-from mcp import Parameter
-from mcp import Resource
-from mcp import parameters
+# Import the mcp instance from app.py
+from ..app import mcp
+# Import specific service modules needed
+from databricks.sdk.service import workspace
 
 from ..db_client import get_db_client
 from ..error_mapping import map_databricks_errors
@@ -12,22 +12,17 @@ from ..error_mapping import map_databricks_errors
 log = structlog.get_logger(__name__)
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:workspace:list_items",
+@mcp.resource(
+    "databricks:workspace:list_items/{path}",
     description="Lists items (notebooks, folders, files, repos) within a specified workspace path.",
-    parameters=[
-        Parameter(
-            name="path",
-            description="The absolute path in the workspace to list items from (e.g., '/Users/user@example.com/').",
-            param_type=parameters.StringType,
-            required=True,
-        )
-    ]
 )
 def list_workspace_items(path: str) -> list[dict]:
     """
     Lists items (notebooks, folders, files, repos, libraries) within a specified workspace path.
     REQ-WS-RES-01
+
+    Args:
+        path: The absolute path in the workspace to list items from (e.g., '/Users/user@example.com/').
     """
     db = get_db_client()
     log.info("Listing workspace items", path=path)
@@ -45,27 +40,23 @@ def list_workspace_items(path: str) -> list[dict]:
     return result
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:workspace:get_notebook_content",
+@mcp.resource(
+    "databricks:workspace:get_notebook_content/{path}",
     description="Retrieves the content of a specified notebook.",
-    parameters=[
-        Parameter(
-            name="path",
-            description="The absolute path of the notebook in the workspace.",
-            param_type=parameters.StringType,
-            required=True,
-        )
-    ]
 )
 def get_notebook_content(path: str) -> dict:
     """
     Retrieves the content of a specified notebook.
     REQ-WS-RES-02
+
+    Args:
+        path: The absolute path of the notebook in the workspace.
     """
+    notebook_path = path
     db = get_db_client()
-    log.info("Getting notebook content", path=path)
+    log.info("Getting notebook content", path=notebook_path)
     # Export notebook content. Default format is SOURCE.
-    exported = db.workspace.export(path=path, format=workspace_service.ExportFormat.SOURCE)
+    exported = db.workspace.export(path=notebook_path, format=workspace.ExportFormat.SOURCE)
 
     content = exported.content
     # Content is base64 encoded, decode it.
@@ -75,34 +66,30 @@ def get_notebook_content(path: str) -> dict:
         else:
             decoded_content = ""
     except Exception as e:
-        log.error("Failed to decode notebook content", path=path, error=str(e))
+        log.error("Failed to decode notebook content", path=notebook_path, error=str(e))
         decoded_content = "Error: Failed to decode content." # Provide error in content
 
-    # Determine language - this might require parsing the notebook or is sometimes in metadata
-    # The export result doesn't directly give language, but WorkspaceObject might?
-    # Let's try getting object details first.
+    # Determine language
     language = "UNKNOWN"
     try:
-        obj_details = db.workspace.get_status(path=path)
+        obj_details = db.workspace.get_status(path=notebook_path)
         if obj_details.language:
             language = str(obj_details.language.value)
     except Exception:
-        log.warning("Could not determine notebook language from status", path=path)
-
+        log.warning("Could not determine notebook language from status", path=notebook_path)
 
     result = {
-        "path": path,
+        "path": notebook_path,
         "content": decoded_content,
         "language": language,
     }
-    log.info("Successfully retrieved notebook content", path=path, language=language)
+    log.info("Successfully retrieved notebook content", path=notebook_path, language=language)
     return result
 
 @map_databricks_errors
-@Resource.from_callable(
+@mcp.resource(
     "databricks:repos:list",
     description="Lists configured Databricks Repos in the workspace.",
-    parameters=[]
 )
 def list_repos() -> list[dict]:
     """
@@ -126,22 +113,17 @@ def list_repos() -> list[dict]:
     return result
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:repos:get_status",
+@mcp.resource(
+    "databricks:repos:get_status/{repo_id}",
     description="Gets the status (branch, commit) of a specified Databricks Repo.",
-     parameters=[
-        Parameter(
-            name="repo_id",
-            description="The unique identifier of the Databricks Repo.",
-            param_type=parameters.StringType,
-            required=True,
-        )
-    ]
 )
 def get_repo_status(repo_id: str) -> dict:
     """
     Gets the Git status of a specified Databricks Repo.
     REQ-WS-RES-04
+
+    Args:
+        repo_id: The unique identifier of the Databricks Repo.
     """
     db = get_db_client()
     log.info("Getting status for Databricks Repo", repo_id=repo_id)

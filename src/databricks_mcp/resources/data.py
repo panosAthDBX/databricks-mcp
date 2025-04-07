@@ -1,23 +1,21 @@
-
 import structlog
-from databricks.sdk.service import sql as sql_service
-from mcp import Parameter
-from mcp import Resource
-from mcp import errors as mcp_errors  # For preview error
-from mcp import parameters
+import json
+# Import the mcp instance from app.py
+from ..app import mcp
+from databricks.sdk.service import catalog as catalog_service, sql as sql_service
+# Remove mcp errors import
 
 from ..db_client import get_db_client
-from ..error_mapping import map_databricks_errors
+from ..error_mapping import map_databricks_errors, CODE_SERVER_ERROR # Import error code
 
 log = structlog.get_logger(__name__)
 
 # --- Unity Catalog Resources ---
 
 @map_databricks_errors
-@Resource.from_callable(
+@mcp.resource(
     "databricks:uc:list_catalogs",
     description="Lists available Unity Catalogs accessible by the current user.",
-    parameters=[]
 )
 def list_catalogs() -> list[dict]:
     """
@@ -40,22 +38,17 @@ def list_catalogs() -> list[dict]:
     return result
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:uc:list_schemas",
+@mcp.resource(
+    "databricks:uc:list_schemas/{catalog_name}",
     description="Lists schemas (databases) within a specified Unity Catalog.",
-    parameters=[
-        Parameter(
-            name="catalog_name",
-            description="The name of the catalog.",
-            param_type=parameters.StringType,
-            required=True,
-        )
-    ]
 )
 def list_schemas(catalog_name: str) -> list[dict]:
     """
     Lists schemas within a specified catalog.
     REQ-DATA-RES-02
+
+    Args:
+        catalog_name: The name of the catalog.
     """
     db = get_db_client()
     log.info("Listing schemas in catalog", catalog_name=catalog_name)
@@ -73,28 +66,18 @@ def list_schemas(catalog_name: str) -> list[dict]:
     return result
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:uc:list_tables",
+@mcp.resource(
+    "databricks:uc:list_tables/{catalog_name}/{schema_name}",
     description="Lists tables and views within a specified schema in a Unity Catalog.",
-    parameters=[
-        Parameter(
-            name="catalog_name",
-            description="The name of the catalog.",
-            param_type=parameters.StringType,
-            required=True,
-        ),
-        Parameter(
-            name="schema_name",
-            description="The name of the schema (database).",
-            param_type=parameters.StringType,
-            required=True,
-        )
-    ]
 )
 def list_tables(catalog_name: str, schema_name: str) -> list[dict]:
     """
     Lists tables/views within a specified schema.
     REQ-DATA-RES-03
+
+    Args:
+        catalog_name: The name of the catalog.
+        schema_name: The name of the schema (database).
     """
     db = get_db_client()
     log.info("Listing tables in schema", catalog_name=catalog_name, schema_name=schema_name)
@@ -114,34 +97,19 @@ def list_tables(catalog_name: str, schema_name: str) -> list[dict]:
     return result
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:uc:get_table_schema",
+@mcp.resource(
+    "databricks:uc:get_table_schema/{catalog_name}/{schema_name}/{table_name}",
     description="Retrieves the schema (column names and types) for a specified table or view.",
-     parameters=[
-        Parameter(
-            name="catalog_name",
-            description="The name of the catalog.",
-            param_type=parameters.StringType,
-            required=True,
-        ),
-        Parameter(
-            name="schema_name",
-            description="The name of the schema (database).",
-            param_type=parameters.StringType,
-            required=True,
-        ),
-         Parameter(
-            name="table_name",
-            description="The name of the table or view.",
-            param_type=parameters.StringType,
-            required=True,
-        )
-    ]
 )
 def get_table_schema(catalog_name: str, schema_name: str, table_name: str) -> dict:
     """
     Retrieves the schema definition for a specified table.
     REQ-DATA-RES-04
+
+    Args:
+        catalog_name: The name of the catalog.
+        schema_name: The name of the schema (database).
+        table_name: The name of the table or view.
     """
     db = get_db_client()
     full_name = f"{catalog_name}.{schema_name}.{table_name}"
@@ -172,36 +140,9 @@ def get_table_schema(catalog_name: str, schema_name: str, table_name: str) -> di
     return result
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:uc:preview_table",
+@mcp.resource(
+    "databricks:uc:preview_table/{catalog_name}/{schema_name}/{table_name}/{row_limit}",
     description="Retrieves the first N rows of a specified table or view.",
-     parameters=[
-        Parameter(
-            name="catalog_name",
-            description="The name of the catalog.",
-            param_type=parameters.StringType,
-            required=True,
-        ),
-        Parameter(
-            name="schema_name",
-            description="The name of the schema (database).",
-            param_type=parameters.StringType,
-            required=True,
-        ),
-         Parameter(
-            name="table_name",
-            description="The name of the table or view.",
-            param_type=parameters.StringType,
-            required=True,
-        ),
-        Parameter(
-            name="row_limit",
-            description="The maximum number of rows to retrieve.",
-            param_type=parameters.IntegerType,
-            required=False,
-            default=100,
-        )
-    ]
 )
 def preview_table(catalog_name: str, schema_name: str, table_name: str, row_limit: int = 100) -> list[dict]:
     """
@@ -212,6 +153,12 @@ def preview_table(catalog_name: str, schema_name: str, table_name: str, row_limi
     It might be better implemented as a Tool if warehouse selection is needed,
     but is kept as a Resource here for simplicity, assuming a default/available warehouse.
     Consider adding warehouse_id parameter if needed.
+
+    Args:
+        catalog_name: The name of the catalog.
+        schema_name: The name of the schema (database).
+        table_name: The name of the table or view.
+        row_limit: The maximum number of rows to retrieve (default 100).
     """
     db = get_db_client()
     full_name = f"`{catalog_name}`.`{schema_name}`.`{table_name}`" # Use backticks for safety
@@ -219,7 +166,6 @@ def preview_table(catalog_name: str, schema_name: str, table_name: str, row_limi
     log.info("Previewing table", table_full_name=full_name, limit=row_limit, query=sql_query)
 
     # Find an available warehouse (simple approach: find first running one)
-    # A more robust approach would involve configuration or parameters.
     warehouse_id = None
     try:
         warehouses = db.warehouses.list()
@@ -234,10 +180,6 @@ def preview_table(catalog_name: str, schema_name: str, table_name: str, row_limi
          log.error("Failed to find suitable SQL warehouse", error=e)
          raise RuntimeError("Could not find a running SQL Warehouse for preview.") from e
 
-
-    # Execute the query - this is blocking using .result()
-    # Ideally, this part aligns with the execute_sql tool's async pattern,
-    # but for a simple preview, blocking might be acceptable.
     statement = db.statement_execution.execute_statement(
         statement=sql_query,
         warehouse_id=warehouse_id,
@@ -245,23 +187,17 @@ def preview_table(catalog_name: str, schema_name: str, table_name: str, row_limi
     ).result() # Block until finished or timeout
 
     if statement.status.state != sql_service.StatementState.SUCCEEDED:
-         log.error("Preview query failed", table_full_name=full_name, state=statement.status.state, error_msg=statement.status.error.message if statement.status.error else "N/A")
-         # Raise an MCPError to signal failure
-         raise mcp_errors.MCPError(
-            code=mcp_errors.ErrorCode.SERVER_ERROR, # Or a more specific code if available
-            message=f"Failed to preview table. State: {statement.status.state}. Error: {statement.status.error.message if statement.status.error else 'Unknown'}"
-        )
-
+         err_msg = statement.status.error.message if statement.status.error else 'Unknown error'
+         log.error("Preview query failed", table_full_name=full_name, state=statement.status.state, error_msg=err_msg)
+         # Raise a standard Exception, decorator will map if possible, otherwise MCP handles generic Exception
+         raise Exception(f"[MCP Error Code {CODE_SERVER_ERROR}] Failed to preview table. State: {statement.status.state}. Error: {err_msg}")
 
     result_data = []
     if statement.result and statement.result.data_array:
-        # Assuming data_array contains lists of values
-        # We need the schema to make this a list of dicts
         columns = [col.name for col in statement.result.manifest.schema.columns] if statement.result.manifest and statement.result.manifest.schema else []
         if columns:
             result_data = [dict(zip(columns, row)) for row in statement.result.data_array]
         else:
-            # Fallback if no schema, just return rows as lists
              result_data = statement.result.data_array
              log.warning("Could not get column names for preview, returning data as arrays.", table_full_name=full_name)
 
@@ -272,10 +208,9 @@ def preview_table(catalog_name: str, schema_name: str, table_name: str, row_limi
 # --- SQL Warehouse Resources ---
 
 @map_databricks_errors
-@Resource.from_callable(
+@mcp.resource(
     "databricks:sql:list_warehouses",
     description="Lists available Databricks SQL Warehouses.",
-    parameters=[]
 )
 def list_sql_warehouses() -> list[dict]:
     """

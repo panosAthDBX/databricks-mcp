@@ -1,10 +1,7 @@
 import structlog
-
-# Import relevant SDK services: experiments, model_registry
-from databricks.sdk.service import mlflow as mlflow_service
-from mcp import Parameter
-from mcp import Resource
-from mcp import parameters
+# Import the mcp instance from app.py
+from ..app import mcp
+from databricks.sdk.errors import DatabricksError
 
 from ..db_client import get_db_client
 from ..error_mapping import map_databricks_errors
@@ -14,24 +11,17 @@ log = structlog.get_logger(__name__)
 # --- MLflow Experiment Resources ---
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:mlflow:list_experiments",
+@mcp.resource(
+    "databricks:mlflow:list_experiments/{max_results}",
     description="Lists MLflow experiments.",
-    parameters=[
-        Parameter(
-            name="max_results",
-            description="Maximum number of experiments to return.",
-            param_type=parameters.IntegerType,
-            required=False,
-            default=100, # Default API max is 1000, but let's use a smaller default
-        ),
-        # Add filter param if needed
-    ]
 )
 def list_mlflow_experiments(max_results: int = 100) -> list[dict]:
     """
     Lists MLflow experiments.
     REQ-ML-RES-01
+
+    Args:
+        max_results: Maximum number of experiments to return (default 100).
     """
     db = get_db_client()
     log.info("Listing MLflow experiments", limit=max_results)
@@ -53,36 +43,19 @@ def list_mlflow_experiments(max_results: int = 100) -> list[dict]:
 
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:mlflow:list_runs",
+@mcp.resource(
+    "databricks:mlflow:list_runs/{experiment_id}/{filter_string}/{max_results}",
     description="Lists runs for a given MLflow experiment.",
-     parameters=[
-        Parameter(
-            name="experiment_id",
-            description="The ID of the experiment.",
-            param_type=parameters.StringType,
-            required=True,
-        ),
-         Parameter(
-            name="filter_string",
-            description="Filter query string (e.g., \"metrics.accuracy > 0.9\").",
-            param_type=parameters.StringType,
-            required=False,
-        ),
-        Parameter(
-            name="max_results",
-            description="Maximum number of runs to return.",
-            param_type=parameters.IntegerType,
-            required=False,
-            default=100,
-        ),
-        # Add order_by param if needed
-    ]
 )
 def list_mlflow_runs(experiment_id: str, filter_string: str | None = None, max_results: int = 100) -> list[dict]:
     """
     Lists runs for a given MLflow experiment.
     REQ-ML-RES-02
+
+    Args:
+        experiment_id: The ID of the experiment.
+        filter_string: Optional filter query string (e.g., "metrics.accuracy > 0.9").
+        max_results: Maximum number of runs to return (default 100).
     """
     db = get_db_client()
     log.info("Listing MLflow runs", experiment_id=experiment_id, filter=filter_string, limit=max_results)
@@ -111,30 +84,25 @@ def list_mlflow_runs(experiment_id: str, filter_string: str | None = None, max_r
 
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:mlflow:get_run_details",
+@mcp.resource(
+    "databricks:mlflow:get_run_details/{run_id}",
     description="Gets parameters, metrics, and tags for a specific MLflow run.",
-    parameters=[
-        Parameter(
-            name="run_id",
-            description="The unique identifier of the MLflow run.",
-            param_type=parameters.StringType,
-            required=True,
-        )
-    ]
 )
 def get_mlflow_run_details(run_id: str) -> dict:
     """
     Gets parameters, metrics, and artifacts for a specific MLflow run.
     REQ-ML-RES-03
     Note: Artifacts themselves are not fetched, only the artifact URI.
+
+    Args:
+        run_id: The unique identifier of the MLflow run.
     """
     db = get_db_client()
     log.info("Getting MLflow run details", run_id=run_id)
     run = db.experiments.get_run(run_id=run_id).run # API returns Run object inside response
 
     if not run or not run.info:
-        raise mlflow_service.MlflowServiceError(f"Run with ID '{run_id}' not found or info missing.")
+        raise DatabricksError(f"Run with ID '{run_id}' not found or info missing.")
 
     # Extract data, params, metrics, tags
     params = {p.key: p.value for p in run.data.params} if run.data and run.data.params else {}
@@ -161,29 +129,18 @@ def get_mlflow_run_details(run_id: str) -> dict:
 # --- Model Registry Resources ---
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:mlflow:list_registered_models",
+@mcp.resource(
+    "databricks:mlflow:list_registered_models/{filter_string}/{max_results}",
     description="Lists models registered in the MLflow Model Registry.",
-     parameters=[
-        Parameter(
-            name="filter_string",
-            description="Filter query string (e.g., \"name like 'my_model%\").",
-            param_type=parameters.StringType,
-            required=False,
-        ),
-        Parameter(
-            name="max_results",
-            description="Maximum number of models to return.",
-            param_type=parameters.IntegerType,
-            required=False,
-            default=100,
-        ),
-    ]
 )
 def list_registered_models(filter_string: str | None = None, max_results: int = 100) -> list[dict]:
     """
     Lists models registered in the MLflow Model Registry.
     REQ-ML-RES-04
+
+    Args:
+        filter_string: Optional filter query string (e.g., "name like 'my_model%'").
+        max_results: Maximum number of models to return (default 100).
     """
     db = get_db_client()
     log.info("Listing registered models", filter=filter_string, limit=max_results)
@@ -208,35 +165,25 @@ def list_registered_models(filter_string: str | None = None, max_results: int = 
     return result
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:mlflow:get_model_version_details",
+@mcp.resource(
+    "databricks:mlflow:get_model_version_details/{model_name}/{version}",
     description="Gets details for a specific version of a registered model.",
-    parameters=[
-         Parameter(
-            name="model_name",
-            description="The name of the registered model.",
-            param_type=parameters.StringType,
-            required=True,
-        ),
-        Parameter(
-            name="version",
-            description="The version number of the model.",
-            param_type=parameters.StringType, # Version is typically a string like "1", "2"
-            required=True,
-        )
-    ]
 )
 def get_model_version_details(model_name: str, version: str) -> dict:
     """
     Gets details for a specific model version.
     REQ-ML-RES-05
+
+    Args:
+        model_name: The name of the registered model.
+        version: The version number of the model (e.g., "1").
     """
     db = get_db_client()
     log.info("Getting model version details", model_name=model_name, version=version)
     version_info = db.model_registry.get_model_version(name=model_name, version=version).model_version # API returns object inside response
 
     if not version_info:
-         raise mlflow_service.MlflowServiceError(f"Model version '{version}' for model '{model_name}' not found.")
+         raise DatabricksError(f"Model version '{version}' for model '{model_name}' not found.")
 
     result = {
         "name": version_info.name,

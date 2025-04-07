@@ -1,7 +1,7 @@
 import structlog
-from mcp import Parameter
-from mcp import Resource
-from mcp import parameters
+# Import the mcp instance from app.py
+from ..app import mcp
+from databricks.sdk.service import jobs as jobs_service
 
 from ..db_client import get_db_client
 from ..error_mapping import map_databricks_errors
@@ -9,30 +9,18 @@ from ..error_mapping import map_databricks_errors
 log = structlog.get_logger(__name__)
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:jobs:list_jobs",
+@mcp.resource(
+    "databricks:jobs:list_jobs/{name_filter}/{limit}",
     description="Lists configured Databricks Jobs.",
-    parameters=[
-        Parameter(
-            name="name_filter",
-            description="Optional filter to apply to job names.",
-            param_type=parameters.StringType,
-            required=False,
-        ),
-        Parameter(
-            name="limit",
-            description="Maximum number of jobs to return.",
-            param_type=parameters.IntegerType,
-            required=False,
-            default=20, # Default limit from API is 20
-        ),
-        # Add offset or page_token if full pagination control is desired via params
-    ]
 )
 def list_jobs(name_filter: str | None = None, limit: int = 20) -> list[dict]:
     """
     Lists configured Databricks Jobs.
     REQ-JOB-RES-01
+
+    Args:
+        name_filter: Optional filter to apply to job names.
+        limit: Maximum number of jobs to return (default 20).
     """
     db = get_db_client()
     log.info("Listing Databricks Jobs", name_filter=name_filter, limit=limit)
@@ -55,22 +43,17 @@ def list_jobs(name_filter: str | None = None, limit: int = 20) -> list[dict]:
     return result
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:jobs:get_job_details",
+@mcp.resource(
+    "databricks:jobs:get_job_details/{job_id}",
     description="Gets the detailed configuration of a specific Databricks Job.",
-     parameters=[
-        Parameter(
-            name="job_id",
-            description="The unique identifier of the job.",
-            param_type=parameters.IntegerType, # Job IDs are typically integers
-            required=True,
-        )
-    ]
 )
 def get_job_details(job_id: int) -> dict:
     """
     Gets the configuration of a specific job.
     REQ-JOB-RES-02
+
+    Args:
+        job_id: The unique identifier of the job.
     """
     db = get_db_client()
     log.info("Getting details for Databricks Job", job_id=job_id)
@@ -92,36 +75,19 @@ def get_job_details(job_id: int) -> dict:
     return result
 
 @map_databricks_errors
-@Resource.from_callable(
-    "databricks:jobs:list_job_runs",
+@mcp.resource(
+    "databricks:jobs:list_job_runs/{job_id}/{limit}/{status_filter}",
     description="Lists recent runs for a specific Databricks job.",
-    parameters=[
-        Parameter(
-            name="job_id",
-            description="The unique identifier of the job.",
-            param_type=parameters.IntegerType,
-            required=True,
-        ),
-        Parameter(
-            name="limit",
-            description="Maximum number of job runs to return.",
-            param_type=parameters.IntegerType,
-            required=False,
-            default=25, # Default API limit
-        ),
-         Parameter(
-            name="status_filter",
-            description="Optional: Filter runs by life cycle state (e.g., 'PENDING', 'RUNNING', 'TERMINATED').",
-            param_type=parameters.StringType,
-            required=False,
-        ),
-        # Add other filters like active_only, start_time_from/to if needed
-    ]
 )
 def list_job_runs(job_id: int, limit: int = 25, status_filter: str | None = None) -> list[dict]:
     """
     Lists recent runs for a specific job.
     REQ-JOB-RES-03
+
+    Args:
+        job_id: The unique identifier of the job.
+        limit: Maximum number of job runs to return (default 25).
+        status_filter: Optional: Filter runs by life cycle state (e.g., 'PENDING', 'RUNNING', 'TERMINATED').
     """
     db = get_db_client()
     log.info("Listing job runs", job_id=job_id, limit=limit, status_filter=status_filter)

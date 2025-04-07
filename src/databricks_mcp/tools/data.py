@@ -1,9 +1,9 @@
-
 import structlog
+import time
+import json
+# Import the mcp instance from app.py
+from ..app import mcp
 from databricks.sdk.service import sql as sql_service
-from mcp import Parameter
-from mcp import Tool
-from mcp import parameters
 
 from ..db_client import get_db_client
 from ..error_mapping import map_databricks_errors
@@ -11,43 +11,23 @@ from ..error_mapping import map_databricks_errors
 log = structlog.get_logger(__name__)
 
 @map_databricks_errors
-@Tool.from_callable(
-    "databricks:sql:execute_statement",
+@mcp.tool(
+    name="databricks:sql:execute_statement",
     description=(
         "Submits a SQL query for asynchronous execution against a specified SQL Warehouse. "
         "Returns a statement_id to check status and retrieve results later using 'get_statement_result'."
     ),
-    parameters=[
-        Parameter(
-            name="sql_query",
-            description="The SQL query text to execute.",
-            param_type=parameters.StringType,
-            required=True,
-        ),
-        Parameter(
-            name="warehouse_id",
-            description="The ID of the SQL Warehouse to run the query on.",
-            param_type=parameters.StringType,
-            required=True,
-        ),
-        Parameter(
-            name="catalog",
-            description="Optional: The catalog context for the query.",
-            param_type=parameters.StringType,
-            required=False,
-        ),
-         Parameter(
-            name="schema",
-            description="Optional: The schema context for the query.",
-            param_type=parameters.StringType,
-            required=False,
-        ),
-    ]
 )
 def execute_sql(sql_query: str, warehouse_id: str, catalog: str | None = None, schema: str | None = None) -> dict:
     """
     Executes a SQL query asynchronously against a specified SQL Warehouse.
     REQ-DATA-TOOL-01
+
+    Args:
+        sql_query: The SQL query text to execute.
+        warehouse_id: The ID of the SQL Warehouse to run the query on.
+        catalog: Optional catalog context for the query.
+        schema: Optional schema context for the query.
     """
     db = get_db_client()
     log.info(
@@ -78,25 +58,20 @@ def execute_sql(sql_query: str, warehouse_id: str, catalog: str | None = None, s
 
 
 @map_databricks_errors
-@Tool.from_callable(
-    "databricks:sql:get_statement_result",
+@mcp.tool(
+    name="databricks:sql:get_statement_result",
     description=(
         "Retrieves the status and results (if available) for a previously submitted SQL statement. "
         "Use this to check on queries submitted via 'execute_statement'."
     ),
-    parameters=[
-        Parameter(
-            name="statement_id",
-            description="The ID of the SQL statement previously submitted.",
-            param_type=parameters.StringType,
-            required=True,
-        )
-    ]
 )
 def get_statement_result(statement_id: str) -> dict:
     """
     Retrieves results for a previously executed SQL statement.
     REQ-DATA-TOOL-02
+
+    Args:
+        statement_id: The ID of the SQL statement previously submitted.
     """
     db = get_db_client()
     log.info("Getting SQL statement status/result", statement_id=statement_id)
@@ -138,23 +113,18 @@ def get_statement_result(statement_id: str) -> dict:
 
 
 @map_databricks_errors
-@Tool.from_callable(
-    "databricks:sql:start_warehouse",
+@mcp.tool(
+    name="databricks:sql:start_warehouse",
     description="Starts a stopped Databricks SQL Warehouse.",
-     parameters=[
-        Parameter(
-            name="warehouse_id",
-            description="The unique identifier of the SQL Warehouse to start.",
-            param_type=parameters.StringType,
-            required=True,
-        )
-    ]
 )
 def start_sql_warehouse(warehouse_id: str) -> dict:
     """
     Starts a stopped SQL Warehouse.
     REQ-DATA-TOOL-03
     This is synchronous and waits for the warehouse to start.
+
+    Args:
+        warehouse_id: The unique identifier of the SQL Warehouse to start.
     """
     db = get_db_client()
     log.info("Starting SQL Warehouse", warehouse_id=warehouse_id)
@@ -165,23 +135,18 @@ def start_sql_warehouse(warehouse_id: str) -> dict:
 
 
 @map_databricks_errors
-@Tool.from_callable(
-    "databricks:sql:stop_warehouse",
+@mcp.tool(
+    name="databricks:sql:stop_warehouse",
     description="Stops a running Databricks SQL Warehouse.",
-     parameters=[
-        Parameter(
-            name="warehouse_id",
-            description="The unique identifier of the SQL Warehouse to stop.",
-            param_type=parameters.StringType,
-            required=True,
-        )
-    ]
 )
 def stop_sql_warehouse(warehouse_id: str) -> dict:
     """
     Stops a running SQL Warehouse.
     REQ-DATA-TOOL-04
     This is synchronous and waits for the warehouse to stop.
+
+    Args:
+        warehouse_id: The unique identifier of the SQL Warehouse to stop.
     """
     db = get_db_client()
     log.info("Stopping SQL Warehouse", warehouse_id=warehouse_id)
