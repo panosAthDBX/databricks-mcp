@@ -3,7 +3,6 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from databricks.sdk.service import repos as repos_service
 from databricks.sdk.service import workspace as workspace_service
 
 from databricks_mcp.resources.workspace import get_notebook_content
@@ -25,12 +24,12 @@ def mock_db_client_ws(): # Changed fixture name slightly to avoid potential clas
 
 def test_list_workspace_items_success(mock_db_client_ws):
     # Arrange
-    item1 = MagicMock(spec=workspace_service.ObjectInfo)
+    item1 = MagicMock()
     item1.path = "/Users/test/notebook"
     item1.object_type = workspace_service.ObjectType.NOTEBOOK
     item1.object_id = 123
 
-    item2 = MagicMock(spec=workspace_service.ObjectInfo)
+    item2 = MagicMock()
     item2.path = "/Users/test/folder"
     item2.object_type = workspace_service.ObjectType.DIRECTORY
     item2.object_id = 456
@@ -54,10 +53,10 @@ def test_get_notebook_content_success(mock_db_client_ws):
     raw_content = "# Databricks notebook source\nprint('hello')"
     encoded_content = base64.b64encode(raw_content.encode('utf-8')).decode('ascii')
 
-    mock_export = MagicMock(spec=workspace_service.ExportResponse)
+    mock_export = MagicMock()
     mock_export.content = encoded_content
 
-    mock_status = MagicMock(spec=workspace_service.ObjectInfo)
+    mock_status = MagicMock()
     mock_status.language = workspace_service.Language.PYTHON
 
     mock_db_client_ws.workspace.export.return_value = mock_export
@@ -78,10 +77,10 @@ def test_get_notebook_content_decode_error(mock_db_client_ws):
     notebook_path = "/Users/test/bad_notebook"
     bad_encoded_content = "this is not base64" # Invalid base64
 
-    mock_export = MagicMock(spec=workspace_service.ExportResponse)
+    mock_export = MagicMock()
     mock_export.content = bad_encoded_content
 
-    mock_status = MagicMock(spec=workspace_service.ObjectInfo)
+    mock_status = MagicMock()
     mock_status.language = None # No language info
 
     mock_db_client_ws.workspace.export.return_value = mock_export
@@ -100,7 +99,7 @@ def test_get_notebook_content_decode_error(mock_db_client_ws):
 
 def test_list_repos_success(mock_db_client_ws):
     # Arrange
-    repo1 = MagicMock(spec=repos_service.RepoInfo)
+    repo1 = MagicMock()
     repo1.id = "repo1"
     repo1.path = "/Repos/test/repo-one"
     repo1.url = "git@github.com:user/repo-one.git"
@@ -128,7 +127,7 @@ def test_list_repos_success(mock_db_client_ws):
 def test_get_repo_status_success(mock_db_client_ws):
      # Arrange
     repo_id_to_get = "repo-xyz"
-    mock_repo_info = MagicMock(spec=repos_service.RepoInfo)
+    mock_repo_info = MagicMock()
     mock_repo_info.id = repo_id_to_get
     mock_repo_info.url = "git@github.com:org/repo-xyz.git"
     mock_repo_info.branch = "develop"

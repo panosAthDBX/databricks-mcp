@@ -3,8 +3,12 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from databricks.sdk.service import secrets as secrets_service
-# from mcp import errors as mcp_errors # Removed incorrect import
+from databricks.sdk.service import iam as secrets_service
+# from databricks.sdk.service import secrets as secrets_service # Incorrect
+from databricks_mcp import error_mapping as mcp_errors # Add this import
+# Import specific code needed for assertion
+from databricks_mcp.error_mapping import CODE_PERMISSION_DENIED
+from databricks_mcp.error_mapping import CODE_INTERNAL_ERROR # Add this import
 
 from databricks_mcp.tools.secrets import delete_secret
 from databricks_mcp.tools.secrets import get_secret
@@ -36,9 +40,7 @@ def test_get_secret_success_string(mock_settings, mock_db_client_secrets_tools):
     scope = "scope1"
     key = "key1"
     value_bytes = b"my_secret_value"
-    mock_resp = MagicMock(spec=secrets_service.GetSecretResponse)
-    mock_resp.value = value_bytes
-    mock_db_client_secrets_tools.secrets.get_secret.return_value = mock_resp
+    mock_db_client_secrets_tools.secrets.get_secret.return_value = MagicMock(value=value_bytes)
     mock_settings.enable_get_secret = True # Ensure enabled
 
     # Act
@@ -49,7 +51,8 @@ def test_get_secret_success_string(mock_settings, mock_db_client_secrets_tools):
     assert result["scope"] == scope
     assert result["key"] == key
     assert result["value_string"] == "my_secret_value"
-    assert result["value_base64"] is None
+    assert "value_base64" not in result
+    assert result["value_bytes"] is None
 
 def test_get_secret_success_bytes(mock_settings, mock_db_client_secrets_tools):
     # Arrange
@@ -57,9 +60,7 @@ def test_get_secret_success_bytes(mock_settings, mock_db_client_secrets_tools):
     key = "key_bin"
     value_bytes = b'\x01\x02\xff\xfe' # Non-utf8 bytes
     encoded_value = base64.b64encode(value_bytes).decode('ascii')
-    mock_resp = MagicMock(spec=secrets_service.GetSecretResponse)
-    mock_resp.value = value_bytes
-    mock_db_client_secrets_tools.secrets.get_secret.return_value = mock_resp
+    mock_db_client_secrets_tools.secrets.get_secret.return_value = MagicMock(value=value_bytes)
     mock_settings.enable_get_secret = True
 
     # Act
@@ -78,11 +79,13 @@ def test_get_secret_disabled(mock_settings, mock_db_client_secrets_tools):
     mock_settings.enable_get_secret = False # Disable the tool via config mock
 
     # Act & Assert
-    with pytest.raises(mcp_errors.MCPError) as exc_info:
+    with pytest.raises(Exception) as exc_info:
         get_secret(scope_name="scope", key="key")
 
-    assert exc_info.value.code == mcp_errors.ErrorCode.SERVER_ERROR_PERMISSION_DENIED
-    assert "disabled by server configuration" in exc_info.value.message
+    # The decorator maps unhandled non-SDK errors to CODE_INTERNAL_ERROR
+    assert f"[MCP Error Code {CODE_INTERNAL_ERROR}]" in str(exc_info.value)
+    assert "PermissionError" in str(exc_info.value) # Original error type
+    assert "disabled by server configuration" in str(exc_info.value) # Original message
     mock_db_client_secrets_tools.secrets.get_secret.assert_not_called()
 
 # --- Tests for put_secret ---

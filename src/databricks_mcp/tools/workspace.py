@@ -3,6 +3,9 @@ import structlog
 from ..app import mcp
 # from mcp import Tool, forms # Removed unused imports
 
+# Import compute service for Command Execution types
+from databricks.sdk.service import compute
+
 from ..db_client import get_db_client
 from ..error_mapping import map_databricks_errors
 
@@ -93,21 +96,29 @@ def execute_code(code: str, language: LanguageOptions, cluster_id: str) -> dict:
     db = get_db_client()
     log.info("Executing code snippet", language=language, cluster_id=cluster_id)
 
-    # Use the Command Execution API
-    cmd = db.command_execution.execute(
+    # Use the Clusters API execute method
+    # cmd = db.command_execution.execute( # OLD
+    cmd = db.clusters.execute(
         language=language,
         cluster_id=cluster_id,
         command=code
     ).result() # Use .result() to block and wait for completion
 
-    cmd_status = str(cmd.status) # e.g., CommandStatus.FINISHED, CommandStatus.ERROR
+    # cmd_status = str(cmd.status) # OLD: Assumes cmd has status directly
+    cmd_status = str(cmd.status.value) if cmd.status else "UNKNOWN" # Use .value for Enum
     result_data = None
     result_type = "UNKNOWN"
     if cmd.results:
-        result_type = str(cmd.results.result_type) # e.g., ResultType.TEXT, ResultType.ERROR
+        log.debug("Processing command results", command_id=cmd.id, has_results_obj=True)
+        result_type = str(cmd.results.result_type.value) if cmd.results and cmd.results.result_type else "UNKNOWN"
+        log.debug("Determined result type", command_id=cmd.id, type=result_type)
+        # Assign data first
         result_data = cmd.results.data if hasattr(cmd.results, 'data') else None
-        if result_type == "ERROR" and hasattr(cmd.results, 'cause'):
-             result_data = cmd.results.cause # Provide error cause if available
+        log.debug("Initial result data assignment", command_id=cmd.id, data=result_data)
+        # Overwrite with cause if it's an error (case-insensitive compare)
+        if result_type.upper() == compute.ResultType.ERROR.value.upper() and hasattr(cmd.results, 'cause'):
+             result_data = cmd.results.cause
+             log.debug("Overwrote result data with error cause", command_id=cmd.id, cause=result_data)
 
     log.info(
         "Code execution finished",

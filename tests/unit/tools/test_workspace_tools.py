@@ -2,8 +2,11 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from databricks.sdk.service import command_execution as ce
-from databricks.sdk.service import jobs
+from databricks.sdk.service import jobs as jobs_service
+# Import compute service for command execution types
+from databricks.sdk.service import compute
+# Remove commands import
+# from databricks.sdk.service.commands import Command, CommandStatus, CommandResults, ResultType
 
 from databricks_mcp.tools.workspace import execute_code
 from databricks_mcp.tools.workspace import run_notebook
@@ -20,28 +23,33 @@ def mock_db_client_ws_tools(): # Changed fixture name
     mock_run_waiter = MagicMock() # The waiter object
     mock_client.jobs.run_now.return_value = mock_run_waiter
 
-    mock_run_details = MagicMock(spec=jobs.Run)
+    mock_run_details = MagicMock()
     mock_run_details.run_id = 12345
     mock_run_details.run_page_url = "http://example.com/run/12345"
-    mock_run_details.state = MagicMock(spec=jobs.RunState)
-    mock_run_details.state.life_cycle_state = jobs.RunLifeCycleState.TERMINATED
-    mock_run_details.state.result_state = jobs.RunResultState.SUCCESS
+    mock_run_details.state = MagicMock()
+    mock_run_details.state.life_cycle_state = jobs_service.RunLifeCycleState.TERMINATED
+    mock_run_details.state.result_state = jobs_service.RunResultState.SUCCESS
     # Make run_now().result() return the details (simulating wait)
     mock_run_waiter.result.return_value = mock_run_details
     # Make get_run return the details as well (needed by the implementation)
     mock_client.jobs.get_run.return_value = mock_run_details
 
-    # Mock Command Execution API execute response
-    mock_cmd_response = MagicMock(spec=ce.Command)
+    # Mock Command Execution API (now via Clusters API)
+    mock_cmd_response = MagicMock()
     mock_cmd_response.id = "cmd-abc"
-    mock_cmd_response.status = ce.CommandStatus.FINISHED
-    mock_cmd_response.results = MagicMock(spec=ce.CommandResults)
-    mock_cmd_response.results.result_type = ce.ResultType.TEXT
+    # Use compute.CommandStatus
+    mock_cmd_response.status = compute.CommandStatus.FINISHED
+    mock_cmd_response.results = MagicMock()
+    # Use compute.ResultType
+    mock_cmd_response.results.result_type = compute.ResultType.TEXT
     mock_cmd_response.results.data = "Command output"
-    # Make execute return the command response after waiting
     mock_execute_waiter = MagicMock()
     mock_execute_waiter.result.return_value = mock_cmd_response
-    mock_client.command_execution.execute.return_value = mock_execute_waiter
+    # Mock the execute method on the clusters API
+    mock_client.clusters.execute.return_value = mock_execute_waiter
+    # Remove old mock attribute
+    # mock_client.command_execution = MagicMock()
+    # mock_client.command_execution.execute.return_value = mock_execute_waiter
 
     # Assign unused variable to _
     with patch('databricks_mcp.tools.workspace.get_db_client', return_value=mock_client) as _:
@@ -87,12 +95,12 @@ def test_run_notebook_success_no_cluster(mock_db_client_ws_tools):
 
 def test_run_notebook_failed_run(mock_db_client_ws_tools):
     # Arrange - Modify the mock get_run response for failure
-    mock_run_details_failed = MagicMock(spec=jobs.Run)
+    mock_run_details_failed = MagicMock()
     mock_run_details_failed.run_id = 67890
     mock_run_details_failed.run_page_url = "http://example.com/run/67890"
-    mock_run_details_failed.state = MagicMock(spec=jobs.RunState)
-    mock_run_details_failed.state.life_cycle_state = jobs.RunLifeCycleState.TERMINATED
-    mock_run_details_failed.state.result_state = jobs.RunResultState.FAILED
+    mock_run_details_failed.state = MagicMock()
+    mock_run_details_failed.state.life_cycle_state = jobs_service.RunLifeCycleState.TERMINATED
+    mock_run_details_failed.state.result_state = jobs_service.RunResultState.FAILED
     mock_run_details_failed.state.state_message = "Notebook failed"
 
     # Simulate run_now returning the new run_id, then get_run returning failed state
@@ -125,40 +133,49 @@ def test_execute_code_success(mock_db_client_ws_tools):
     result = execute_code(code=code, language=lang, cluster_id=cluster)
 
     # Assert
-    mock_db_client_ws_tools.command_execution.execute.assert_called_once_with(
+    # Check that clusters.execute was called
+    mock_db_client_ws_tools.clusters.execute.assert_called_once_with(
         language=lang,
         cluster_id=cluster,
         command=code
     )
-    mock_db_client_ws_tools.command_execution.execute.return_value.result.assert_called_once() # Check wait
+    mock_db_client_ws_tools.clusters.execute.return_value.result.assert_called_once()
     assert result["command_id"] == "cmd-abc"
-    assert result["status"] == "CommandStatus.FINISHED"
-    assert result["result_type"] == "ResultType.TEXT"
+    # Assert against the enum value string
+    assert result["status"] == compute.CommandStatus.FINISHED.value
+    assert result["result_type"] == compute.ResultType.TEXT.value
     assert result["result_data"] == "Command output"
 
 
 def test_execute_code_error_result(mock_db_client_ws_tools):
     # Arrange - Modify mock execute response for error
-    mock_cmd_response_err = MagicMock(spec=ce.Command)
+    mock_cmd_response_err = MagicMock()
     mock_cmd_response_err.id = "cmd-err"
-    mock_cmd_response_err.status = ce.CommandStatus.ERROR
-    mock_cmd_response_err.results = MagicMock(spec=ce.CommandResults)
-    mock_cmd_response_err.results.result_type = ce.ResultType.ERROR
-    mock_cmd_response_err.results.cause = "Traceback...\nNameError: name 'x' is not defined"
-    mock_cmd_response_err.results.data = None # No data on error typically
+    # Use compute.CommandStatus
+    mock_cmd_response_err.status = compute.CommandStatus.ERROR
+    mock_cmd_response_err.results = MagicMock()
+    # Use compute.ResultType
+    mock_cmd_response_err.results.result_type = compute.ResultType.ERROR
+    mock_cmd_response_err.results.cause = "Traceback...\\nNameError: name 'x' is not defined"
+    mock_cmd_response_err.results.data = None
 
     mock_execute_waiter_err = MagicMock()
     mock_execute_waiter_err.result.return_value = mock_cmd_response_err
-    mock_db_client_ws_tools.command_execution.execute.return_value = mock_execute_waiter_err
+    # Mock the clusters.execute method to return the error waiter
+    mock_db_client_ws_tools.clusters.execute.return_value = mock_execute_waiter_err
+    # Remove old mock attribute setting
+    # mock_db_client_ws_tools.command_execution = MagicMock()
+    # mock_db_client_ws_tools.command_execution.execute.return_value = mock_execute_waiter_err
 
     # Act
     result = execute_code(code="print(x)", language="python", cluster_id="c-err")
 
     # Assert
     assert result["command_id"] == "cmd-err"
-    assert result["status"] == "CommandStatus.ERROR"
-    assert result["result_type"] == "ResultType.ERROR"
-    assert "NameError" in result["result_data"] # Contains the error cause
+    # Assert against the enum value string
+    assert result["status"] == compute.CommandStatus.ERROR.value
+    assert result["result_type"] == compute.ResultType.ERROR.value
+    assert "NameError" in result["result_data"]
 
 
 # Add tests for SDK errors being mapped by decorator if needed, similar to compute tests

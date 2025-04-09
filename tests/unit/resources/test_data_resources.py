@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from databricks.sdk.service import catalog as uc
 from databricks.sdk.service import sql as sql_service
-from mcp import errors as mcp_errors  # For preview error test
+from databricks_mcp import error_mapping as mcp_errors # For preview error test
 
 from databricks_mcp.resources.data import get_table_schema
 from databricks_mcp.resources.data import list_catalogs
@@ -23,7 +23,7 @@ def mock_db_client_data():
 
 # --- Tests for list_catalogs ---
 def test_list_catalogs_success(mock_db_client_data):
-    cat1 = MagicMock(spec=uc.CatalogInfo)
+    cat1 = MagicMock()
     cat1.name = "main"
     cat1.comment = "Main catalog"
     cat1.owner = "admin"
@@ -35,7 +35,7 @@ def test_list_catalogs_success(mock_db_client_data):
 
 # --- Tests for list_schemas ---
 def test_list_schemas_success(mock_db_client_data):
-    sch1 = MagicMock(spec=uc.SchemaInfo)
+    sch1 = MagicMock()
     sch1.name = "default"
     sch1.catalog_name = "main"
     sch1.comment = "Default schema"
@@ -53,7 +53,7 @@ def test_list_schemas_success(mock_db_client_data):
 
 # --- Tests for list_tables ---
 def test_list_tables_success(mock_db_client_data):
-    tbl1 = MagicMock(spec=uc.TableInfo)
+    tbl1 = MagicMock()
     tbl1.name = "my_table"
     tbl1.catalog_name = "main"
     tbl1.schema_name = "default"
@@ -75,12 +75,12 @@ def test_list_tables_success(mock_db_client_data):
 
 # --- Tests for get_table_schema ---
 def test_get_table_schema_success(mock_db_client_data):
-    col1 = MagicMock(spec=uc.ColumnInfo)
+    col1 = MagicMock()
     col1.name = "id"; col1.type_text = "int"; col1.position = 0; col1.nullable = False; col1.comment = "ID"
-    col2 = MagicMock(spec=uc.ColumnInfo)
+    col2 = MagicMock()
     col2.name = "data"; col2.type_text = "string"; col2.position = 1; col2.nullable = True; col2.comment = None
 
-    tbl_info = MagicMock(spec=uc.TableInfo)
+    tbl_info = MagicMock()
     tbl_info.table_type = uc.TableType.EXTERNAL
     tbl_info.columns = [col1, col2]
     tbl_info.comment = "Table comment"
@@ -101,28 +101,30 @@ def test_get_table_schema_success(mock_db_client_data):
 def test_preview_table_success(mock_db_client_data):
     # Arrange
     # 1. Mock finding a running warehouse
-    wh_info = MagicMock(spec=sql_service.EndpointInfo)
+    wh_info = MagicMock()
     wh_info.id = "wh123"
-    wh_info.state = sql_service.ListWarehousesResponseState.RUNNING
+    wh_info.state = sql_service.State.RUNNING
     mock_db_client_data.warehouses.list.return_value = [wh_info]
 
     # 2. Mock statement execution result
-    col1_schema = MagicMock(spec=sql_service.ColumnInfo); col1_schema.name = "col_a"
-    col2_schema = MagicMock(spec=sql_service.ColumnInfo); col2_schema.name = "col_b"
-    manifest = MagicMock(spec=sql_service.ResultManifest)
-    manifest.schema = MagicMock(spec=sql_service.Schema)
+    col1_schema = MagicMock()
+    col1_schema.name = "col_a"
+    col2_schema = MagicMock()
+    col2_schema.name = "col_b"
+    manifest = MagicMock()
+    manifest.schema = MagicMock()
     manifest.schema.columns = [col1_schema, col2_schema]
 
-    result = MagicMock(spec=sql_service.ResultData)
-    result.data_array = [[1, "a"], [2, "b"]]
-    result.manifest = manifest
+    result_data_mock = MagicMock()
+    result_data_mock.data_array = [[1, "a"], [2, "b"]]
+    result_data_mock.manifest = manifest
 
-    status = MagicMock(spec=sql_service.StatementStatus)
+    status = MagicMock()
     status.state = sql_service.StatementState.SUCCEEDED
 
-    statement_resp = MagicMock(spec=sql_service.StatementResponse)
+    statement_resp = MagicMock()
     statement_resp.status = status
-    statement_resp.result = result
+    statement_resp.result = result_data_mock
 
     # Simulate execute_statement returning a waiter that returns the response
     waiter = MagicMock()
@@ -148,40 +150,52 @@ def test_preview_table_no_warehouse(mock_db_client_data):
     # Arrange: No running warehouses found
     mock_db_client_data.warehouses.list.return_value = []
     # Act & Assert
-    with pytest.raises(RuntimeError, match="No running SQL Warehouse"):
+    with pytest.raises(Exception) as exc_info:
         preview_table(catalog_name="cat", schema_name="sch", table_name="tbl")
+    # Assert on the wrapped exception from the decorator
+    assert "Could not find a running SQL Warehouse for preview" in str(exc_info.value)
+    assert "RuntimeError" in str(exc_info.value)
+    assert "[MCP Error Code -32603]" in str(exc_info.value) # Should map to Internal Error
     mock_db_client_data.statement_execution.execute_statement.assert_not_called()
 
 def test_preview_table_query_fails(mock_db_client_data):
      # Arrange
     # 1. Mock finding a running warehouse
-    wh_info = MagicMock(spec=sql_service.EndpointInfo)
-    wh_info.id = "wh123"; wh_info.state = sql_service.ListWarehousesResponseState.RUNNING
+    wh_info = MagicMock()
+    wh_info.id = "wh123"
+    wh_info.state = sql_service.State.RUNNING
     mock_db_client_data.warehouses.list.return_value = [wh_info]
     # 2. Mock failed statement execution
-    status = MagicMock(spec=sql_service.StatementStatus)
+    status = MagicMock()
     status.state = sql_service.StatementState.FAILED
-    status.error = MagicMock(spec=sql_service.Error)
+    status.error = MagicMock()
     status.error.message = "Syntax error"
-    statement_resp = MagicMock(spec=sql_service.StatementResponse)
+    statement_resp = MagicMock()
     statement_resp.status = status
     statement_resp.result = None
     waiter = MagicMock(); waiter.result.return_value = statement_resp
     mock_db_client_data.statement_execution.execute_statement.return_value = waiter
     # Act & Assert
-    with pytest.raises(mcp_errors.MCPError) as exc_info:
+    # Import relevant error codes
+    from databricks_mcp.error_mapping import CODE_SERVER_ERROR
+    with pytest.raises(Exception) as exc_info:
         preview_table(catalog_name="cat", schema_name="sch", table_name="tbl")
-    assert exc_info.value.code == mcp_errors.ErrorCode.SERVER_ERROR
-    assert "Failed to preview table" in exc_info.value.message
-    assert "Syntax error" in exc_info.value.message
+    # Check the wrapped exception message for a statement execution failure
+    # The original error is mocked as waiter.result() returning status FAILED
+    # This should be caught and likely mapped to CODE_SERVER_ERROR
+    assert f"[MCP Error Code {CODE_SERVER_ERROR}]" in str(exc_info.value)
+    # The original error message from the mock was "Syntax error"
+    assert "Syntax error" in str(exc_info.value)
 
 # --- Tests for list_sql_warehouses ---
 def test_list_sql_warehouses_success(mock_db_client_data):
-    wh1 = MagicMock(spec=sql_service.EndpointInfo)
-    wh1.id = "wh1"; wh1.name = "WH One"; wh1.state = sql_service.ListWarehousesResponseState.RUNNING
+    wh1 = MagicMock()
+    wh1.id = "wh1"; wh1.name = "WH One"
+    wh1.state = sql_service.State.RUNNING
     wh1.cluster_size = "Medium"; wh1.num_clusters = 1; wh1.creator_name = "u1"
-    wh2 = MagicMock(spec=sql_service.EndpointInfo)
-    wh2.id = "wh2"; wh2.name = "WH Two"; wh2.state = sql_service.ListWarehousesResponseState.STOPPED
+    wh2 = MagicMock()
+    wh2.id = "wh2"; wh2.name = "WH Two"
+    wh2.state = sql_service.State.STOPPED
     wh2.cluster_size = "Small"; wh2.num_clusters = 0; wh2.creator_name = "u2"
 
     mock_db_client_data.warehouses.list.return_value = [wh1, wh2]

@@ -97,61 +97,88 @@ def get_statement_result(statement_id: str) -> dict:
         
         try:
             # First check for inline results
-            if hasattr(statement, 'result'):
+            if hasattr(statement, 'result') and statement.result is not None:
                 log.info("Statement has result property", statement_id=statement_id)
-                
+
                 # Check for external links (EXTERNAL_LINKS disposition)
-                if hasattr(statement.result, 'external_links') and statement.result.external_links:
-                    log.info("External links found - data is stored externally", 
-                             statement_id=statement_id, 
-                             link_count=len(statement.result.external_links))
-                    
-                    # Note: To actually fetch this data we would need to download from the link
-                    # For simplicity, we'll just return the link information in the response
+                # Be more specific checking the attribute exists and is non-empty list
+                external_links = getattr(statement.result, 'external_links', None)
+                if external_links is not None and isinstance(external_links, list) and external_links:
+                    log.info("External links found - data is stored externally",
+                             statement_id=statement_id,
+                             link_count=len(external_links))
                     result_data = [
                         {
                             "chunk_index": link.chunk_index,
                             "row_count": link.row_count,
                             "external_link_available": True,
-                            # Don't include the actual link in response as it might contain sensitive info
                         }
-                        for link in statement.result.external_links
+                        for link in external_links
                     ]
-                    
+
                 # Check for inline data array (INLINE disposition)
-                elif hasattr(statement.result, 'data_array') and statement.result.data_array:
-                    log.info("Inline data_array found", 
-                             statement_id=statement_id, 
-                             row_count=len(statement.result.data_array))
-                    result_data = statement.result.data_array
+                # Check attribute exists and is non-empty list
+                data_array = getattr(statement.result, 'data_array', None)
+                if data_array is not None and isinstance(data_array, list) and data_array:
+                    log.info("Inline data_array found",
+                             statement_id=statement_id,
+                             row_count=len(data_array))
+                    result_data = data_array
             
             # Get schema information from manifest
-            if hasattr(statement, 'manifest') and statement.manifest:
+            manifest = getattr(statement, 'manifest', None)
+            if manifest:
                 log.info("Statement has manifest with schema", statement_id=statement_id)
                 
-                if (hasattr(statement.manifest, 'schema') and 
-                    statement.manifest.schema and 
-                    hasattr(statement.manifest.schema, 'columns')):
-                    
-                    columns = statement.manifest.schema.columns
+                schema = getattr(manifest, 'schema', None)
+                if schema and hasattr(schema, 'columns'):
+                    columns = schema.columns
                     result_schema = [
                         {
                             "name": col.name,
-                            "type": col.type_text if hasattr(col, 'type_text') else None,
-                            "position": col.position if hasattr(col, 'position') else None
+                            "type": getattr(col, 'type_text', None),
+                            "position": getattr(col, 'position', None)
                         }
                         for col in columns
                     ]
                     
                     # If we have schema and raw data_array, create dict result
-                    if result_data and isinstance(result_data, list) and not isinstance(result_data[0], dict):
-                        column_names = [col.name for col in columns]
-                        result_data = [dict(zip(column_names, row)) for row in result_data]
-                        log.info("Transformed raw data into dictionary format with schema", 
-                                 statement_id=statement_id,
-                                 row_count=len(result_data))
+                    if result_data and isinstance(result_data, list) and isinstance(result_data[0], list):
+                        column_names = []
+                        if columns:
+                            log.debug("Iterating over schema columns", columns_repr=repr(columns))
+                            for i, col in enumerate(columns):
+                                log.debug(f"Processing column index {i}", col_repr=repr(col), has_name=hasattr(col, 'name'))
+                                # Directly access .name assuming it's set
+                                col_name = col.name if hasattr(col, 'name') else None
+                                # col_name = getattr(col, 'name', None) # OLD
+                                log.debug(f"Extracted col_name for index {i}", name=col_name)
+                                if col_name and isinstance(col_name, str): # Ensure it's a string
+                                    column_names.append(col_name)
+                                else:
+                                    log.warning("Column in schema missing name attribute or not a string", column_index=i, column_object=repr(col))
+                        else:
+                            log.warning("Schema columns attribute was empty or None")
+
+                        log.debug("Final extracted column names", names=column_names)
+                        # Only transform if we successfully got column names
+                        if column_names and len(column_names) == len(result_data[0]):
+                            try:
+                                result_data = [dict(zip(column_names, row)) for row in result_data]
+                                log.info("Transformed raw data into dictionary format with schema",
+                                         statement_id=statement_id,
+                                         row_count=len(result_data),
+                                         first_row_example=result_data[0] if result_data else None)
+                            except Exception as transform_error:
+                                log.error("Error during data transformation", error=transform_error, exc_info=True)
+                                # Keep raw data if transformation fails
+                        else:
+                            log.warning("Could not transform data to dict: column name mismatch or missing columns", 
+                                        num_columns=len(column_names), 
+                                        first_row_len=len(result_data[0]) if result_data else 0)
+                            # Keep raw list data if transformation impossible
             
-            # If still no result_data, try fetching chunk as fallback
+            # If still no result_data after checking inline/external, try fetching chunk
             if result_data is None:
                 log.debug("No result data in statement response, trying to fetch chunk", statement_id=statement_id)
                 try:

@@ -5,6 +5,7 @@ from databricks.sdk.errors import NotFound
 
 from databricks_mcp.tools.compute import start_cluster, terminate_cluster
 from databricks_mcp.db_client import get_db_client # To mock
+from databricks_mcp.error_mapping import CODE_RESOURCE_NOT_FOUND # Import error code directly
 
 # Mock the get_db_client function used by the tools
 @pytest.fixture(autouse=True)
@@ -42,16 +43,15 @@ def test_start_cluster_sdk_error_mapped(mock_db_client):
     sdk_error = NotFound("Cluster not found")
     mock_db_client.clusters.start.side_effect = sdk_error
 
-    # Act & Assert: Check if the correct MCPError is raised
-    with pytest.raises(MCPError) as exc_info:
+    # Act & Assert: Check if the correct generic Exception is raised
+    with pytest.raises(Exception) as exc_info:
         start_cluster(cluster_id="not-found")
 
-    # Assert error details (mapped by error_mapping decorator)
-    assert exc_info.value.code == ErrorCode.SERVER_ERROR_RESOURCE_NOT_FOUND
-    assert "Cluster not found" in exc_info.value.message
+    # Assert error details (check message content for code and original error)
+    assert f"[MCP Error Code {CODE_RESOURCE_NOT_FOUND}]" in str(exc_info.value)
+    assert "NotFound" in str(exc_info.value) # Check original error type
+    assert "Cluster not found" in str(exc_info.value) # Check original message
     mock_db_client.clusters.start.assert_called_once_with(cluster_id="not-found")
-    # Ensure result() wasn't called if start failed immediately
-    # mock_db_client.clusters.start.return_value.result.assert_not_called() # This might fail if side_effect is raised before return
 
 # --- Tests for terminate_cluster ---
 
@@ -72,10 +72,10 @@ def test_terminate_cluster_sdk_error_mapped(mock_db_client):
     mock_db_client.clusters.delete.side_effect = sdk_error
 
     # Act & Assert
-    with pytest.raises(MCPError) as exc_info:
+    with pytest.raises(Exception) as exc_info:
         terminate_cluster(cluster_id="gone")
 
-    assert exc_info.value.code == ErrorCode.SERVER_ERROR_RESOURCE_NOT_FOUND
-    assert "Cannot terminate non-existent cluster" in exc_info.value.message
+    assert f"[MCP Error Code {CODE_RESOURCE_NOT_FOUND}]" in str(exc_info.value)
+    assert "NotFound" in str(exc_info.value)
+    assert "Cannot terminate non-existent cluster" in str(exc_info.value)
     mock_db_client.clusters.delete.assert_called_once_with(cluster_id="gone")
-    # mock_db_client.clusters.delete.return_value.result.assert_not_called()

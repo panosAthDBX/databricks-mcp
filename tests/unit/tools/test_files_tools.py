@@ -1,7 +1,10 @@
 import pytest
 import base64
 from unittest.mock import MagicMock, patch
-from databricks.sdk.service import dbfs as dbfs_service
+from databricks.sdk.service import files as dbfs_service
+from databricks.sdk.errors import DatabricksError # Import general error
+# Import error code constant
+from databricks_mcp.error_mapping import CODE_SERVER_ERROR
 
 from databricks_mcp.tools.files import (
     read_file,
@@ -77,11 +80,18 @@ def test_write_file_sdk_error_during_write(mock_db_client_files_tools):
     mock_handle = 6789
     mock_db_client_files_tools.dbfs.create.return_value = MagicMock(handle=mock_handle)
     # Simulate error during add_block
-    mock_db_client_files_tools.dbfs.add_block.side_effect = dbfs_service.DbfsError("Disk full")
+    sdk_error = DatabricksError("Disk full") # Use general error
+    mock_db_client_files_tools.dbfs.add_block.side_effect = sdk_error
 
-    # Act & Assert - Expect the original exception to be raised (and mapped by decorator)
-    with pytest.raises(dbfs_service.DbfsError, match="Disk full"):
+    # Act & Assert - Expect the mapped generic Exception
+    # with pytest.raises(DatabricksError, match="Disk full"): # OLD
+    with pytest.raises(Exception) as exc_info:
          write_file(path=path, content_base64=encoded_content)
+
+    # Assert the wrapped exception message
+    assert f"[MCP Error Code {CODE_SERVER_ERROR}]" in str(exc_info.value)
+    assert "DatabricksError" in str(exc_info.value)
+    assert "Disk full" in str(exc_info.value)
 
     # Ensure create was called, add_block was attempted, close was not
     mock_db_client_files_tools.dbfs.create.assert_called_once_with(path=path, overwrite=False)

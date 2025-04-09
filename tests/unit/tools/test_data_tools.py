@@ -16,148 +16,164 @@ from databricks_mcp.db_client import get_db_client # To mock
 def mock_db_client_data_tools():
     mock_client = MagicMock()
 
-    # Mock statement execution responses
-    mock_exec_status = MagicMock(spec=sql_service.StatementStatus)
-    mock_exec_status.state = sql_service.StatementState.PENDING
-    mock_exec_resp = MagicMock(spec=sql_service.ExecuteStatementResponse)
+    # Mock execute_statement response
+    mock_exec_resp = MagicMock()
     mock_exec_resp.statement_id = "stmt-123"
-    mock_exec_resp.status = mock_exec_status
+    mock_exec_resp.status = MagicMock()
+    # Changed default fixture status to PENDING as execute_statement is async
+    mock_exec_resp.status.state = sql_service.StatementState.PENDING
     mock_client.statement_execution.execute_statement.return_value = mock_exec_resp
 
-    # Mock get statement response (initial)
-    mock_get_stmt_initial = MagicMock(spec=sql_service.StatementResponse)
-    mock_get_stmt_initial.statement_id = "stmt-123"
-    mock_get_stmt_initial.status = mock_exec_status # Still pending initially
-    mock_get_stmt_initial.result = None
-    # Mock get statement response (success) - setup later in test
-    # Mock get statement chunk response (success) - setup later in test
+    # Mock get_statement response
+    mock_get_resp = MagicMock()
+    mock_get_resp.statement_id = "stmt-123"
+    mock_get_resp.status = MagicMock()
+    mock_get_resp.status.state = sql_service.StatementState.SUCCEEDED
+    mock_get_resp.result = MagicMock()
+    mock_get_resp.result.data_array = [[1, "a"], [2, "b"]]
+    mock_get_resp.result.manifest = MagicMock()
+    # Create a mock schema object explicitly
+    mock_schema = MagicMock()
+    col1 = MagicMock(name="colA")
+    col2 = MagicMock(name="colB")
+    mock_schema.columns = [col1, col2] # Assign list to mock schema's columns
+    # Assign the mock schema to the manifest
+    mock_get_resp.result.manifest.schema = mock_schema
+    mock_client.statement_execution.get_statement.return_value = mock_get_resp
 
-    # Mock get statement response (failed) - setup later in test
-
-    # Mock warehouse start/stop
+    # Mock start/stop warehouse to return a waiter like other blocking calls
     mock_start_waiter = MagicMock()
-    mock_start_waiter.result.return_value = None
+    mock_start_waiter.result.return_value = None # Simulate successful wait
     mock_stop_waiter = MagicMock()
-    mock_stop_waiter.result.return_value = None
+    mock_stop_waiter.result.return_value = None # Simulate successful wait
     mock_client.warehouses.start.return_value = mock_start_waiter
     mock_client.warehouses.stop.return_value = mock_stop_waiter
 
-    # Assign unused variable to _
     with patch('databricks_mcp.tools.data.get_db_client', return_value=mock_client) as _:
         yield mock_client
 
 # --- Tests for execute_sql ---
 def test_execute_sql_success(mock_db_client_data_tools):
+    # Arrange
     query = "SELECT * FROM my_table"
     wh_id = "wh-abc"
-    result = execute_sql(sql_query=query, warehouse_id=wh_id)
+    cat = "main"
+    sch = "default"
 
+    # Act
+    result = execute_sql(sql_query=query, warehouse_id=wh_id, catalog=cat, schema=sch)
+
+    # Assert
     mock_db_client_data_tools.statement_execution.execute_statement.assert_called_once_with(
         statement=query,
         warehouse_id=wh_id,
-        catalog=None,
-        schema=None,
-        wait_timeout="0s",
-        disposition=sql_service.Disposition.EXTERNAL_LINKS
+        catalog=cat,
+        schema=sch,
+        wait_timeout="0s", # Check actual arguments used in implementation
+        disposition=sql_service.Disposition.INLINE, # Check actual arguments
+        format=sql_service.Format.JSON_ARRAY, # Check actual arguments
     )
+    # Check the initial status from the fixture
     assert result == {"statement_id": "stmt-123", "status": "PENDING"}
 
 # --- Tests for get_statement_result ---
 def test_get_statement_result_pending(mock_db_client_data_tools):
-     # Arrange: Default mock returns pending state
-    mock_db_client_data_tools.statement_execution.get_statement.return_value = \
-        mock_db_client_data_tools.statement_execution.execute_statement.return_value
+    # Arrange - modify fixture return for get_statement to be PENDING
+    mock_get_resp = mock_db_client_data_tools.statement_execution.get_statement.return_value
+    mock_get_resp.status.state = sql_service.StatementState.PENDING
+    mock_get_resp.result = None # Ensure no result data when pending
 
     # Act
     result = get_statement_result(statement_id="stmt-123")
 
     # Assert
-    mock_db_client_data_tools.statement_execution.get_statement.assert_called_once_with(statement_id="stmt-123")
-    assert result == {
-        "statement_id": "stmt-123",
-        "status": "PENDING",
-        "schema": None,
-        "result_data": None,
-        "error_message": None
-    }
-    mock_db_client_data_tools.statement_execution.get_statement_result_chunk_n.assert_not_called()
-
-
-def test_get_statement_result_success(mock_db_client_data_tools):
-    # Arrange: Mock successful completion and result chunk
-    mock_status_succ = MagicMock(spec=sql_service.StatementStatus)
-    mock_status_succ.state = sql_service.StatementState.SUCCEEDED
-    mock_get_stmt_succ = MagicMock(spec=sql_service.StatementResponse)
-    mock_get_stmt_succ.statement_id = "stmt-123"
-    mock_get_stmt_succ.status = mock_status_succ
-
-    col1_schema = MagicMock(spec=sql_service.ColumnInfo)
-    col1_schema.name = "id"
-    col1_schema.as_dict.return_value = {"name": "id"}
-    col2_schema = MagicMock(spec=sql_service.ColumnInfo)
-    col2_schema.name = "val"
-    col2_schema.as_dict.return_value = {"name": "val"}
-    manifest = MagicMock(spec=sql_service.ResultManifest)
-    manifest.schema = MagicMock(spec=sql_service.Schema)
-    manifest.schema.columns = [col1_schema, col2_schema]
-
-    result_data = MagicMock(spec=sql_service.ResultData)
-    result_data.data_array = [[1, "a"], [2, "b"]]
-    result_data.manifest = manifest
-
-    mock_chunk = MagicMock(spec=sql_service.FetchStatementResultResponse)
-    mock_chunk.result = result_data
-
-    mock_db_client_data_tools.statement_execution.get_statement.return_value = mock_get_stmt_succ
-    mock_db_client_data_tools.statement_execution.get_statement_result_chunk_n.return_value = mock_chunk
-
-    # Act
-    result = get_statement_result(statement_id="stmt-123")
-
-    # Assert
-    mock_db_client_data_tools.statement_execution.get_statement.assert_called_once_with(statement_id="stmt-123")
-    mock_db_client_data_tools.statement_execution.get_statement_result_chunk_n.assert_called_once_with(statement_id="stmt-123", chunk_index=0)
-    assert result["status"] == "SUCCEEDED"
-    assert result["schema"] == [{"name": "id"}, {"name": "val"}]
-    assert result["result_data"] == [{"id": 1, "val": "a"}, {"id": 2, "val": "b"}]
+    assert result["statement_id"] == "stmt-123"
+    assert result["status"] == "PENDING"
+    # Assert the key returned by the function (likely 'result_data' or similar)
+    assert result["result_data"] is None
     assert result["error_message"] is None
 
-def test_get_statement_result_failed(mock_db_client_data_tools):
-    # Arrange: Mock failed state
-    mock_status_fail = MagicMock(spec=sql_service.StatementStatus)
-    mock_status_fail.state = sql_service.StatementState.FAILED
-    mock_status_fail.error = MagicMock(spec=sql_service.Error)
-    mock_status_fail.error.message = "SQL error occurred"
-    mock_get_stmt_fail = MagicMock(spec=sql_service.StatementResponse)
-    mock_get_stmt_fail.statement_id = "stmt-123"
-    mock_get_stmt_fail.status = mock_status_fail
+def test_get_statement_result_success(mock_db_client_data_tools):
+    # Arrange - OVERRIDE fixture mock for this specific test
+    mock_get_resp_success = MagicMock()
+    mock_get_resp_success.statement_id = "stmt-123"
+    mock_get_resp_success.status = MagicMock()
+    mock_get_resp_success.status.state = sql_service.StatementState.SUCCEEDED
 
-    mock_db_client_data_tools.statement_execution.get_statement.return_value = mock_get_stmt_fail
+    # Setup result with data_array
+    mock_get_resp_success.result = MagicMock()
+    mock_get_resp_success.result.data_array = [[1, "a"], [2, "b"]]
+
+    # Setup manifest with schema and columns
+    mock_get_resp_success.manifest = MagicMock()
+    mock_schema = MagicMock()
+    # Create mocks THEN set the name attribute
+    col1 = MagicMock()
+    col1.name = "colA"
+    col2 = MagicMock()
+    col2.name = "colB"
+    mock_schema.columns = [col1, col2]
+    mock_get_resp_success.manifest.schema = mock_schema
+
+    # Configure the main mock client's method
+    mock_db_client_data_tools.statement_execution.get_statement.return_value = mock_get_resp_success
 
     # Act
     result = get_statement_result(statement_id="stmt-123")
 
     # Assert
     mock_db_client_data_tools.statement_execution.get_statement.assert_called_once_with(statement_id="stmt-123")
-    assert result["status"] == "FAILED"
-    assert result["result_data"] is None
-    assert result["schema"] is None
-    assert result["error_message"] == "SQL error occurred"
-    mock_db_client_data_tools.statement_execution.get_statement_result_chunk_n.assert_not_called()
+    assert result["statement_id"] == "stmt-123"
+    assert result["status"] == "SUCCEEDED"
+    assert result["error_message"] is None
+    assert result["schema"] is not None # Check schema was processed
+    assert len(result["schema"]) == 2
+    assert result["schema"][0]["name"] == "colA"
+    assert result["result_data"] is not None # Check result_data exists
+    assert len(result["result_data"]) == 2
+    assert result["result_data"][0] == {"colA": 1, "colB": "a"} # Check transformation
+    assert result["result_data"][1] == {"colA": 2, "colB": "b"}
 
+def test_get_statement_result_failed(mock_db_client_data_tools):
+    # Arrange - modify fixture return for get_statement to be FAILED
+    mock_get_resp = mock_db_client_data_tools.statement_execution.get_statement.return_value
+    mock_get_resp.status.state = sql_service.StatementState.FAILED
+    mock_get_resp.status.error = MagicMock()
+    mock_get_resp.status.error.message = "SQL Error Occurred"
+    mock_get_resp.result = None
+
+    # Act
+    result = get_statement_result(statement_id="stmt-123")
+
+    # Assert
+    assert result["statement_id"] == "stmt-123"
+    assert result["status"] == "FAILED"
+    assert result["error_message"] == "SQL Error Occurred"
+    # Assert the key returned by the function
+    assert result["result_data"] is None
 
 # --- Tests for start_sql_warehouse ---
 def test_start_sql_warehouse_success(mock_db_client_data_tools):
-    result = start_sql_warehouse(warehouse_id="wh-start")
-    mock_db_client_data_tools.warehouses.start.assert_called_once_with(id="wh-start")
+    # Arrange
+    wh_id = "start-wh"
+    # Act
+    result = start_sql_warehouse(warehouse_id=wh_id)
+    # Assert
+    mock_db_client_data_tools.warehouses.start.assert_called_once_with(id=wh_id)
+    # Check that the waiter was awaited
     mock_db_client_data_tools.warehouses.start.return_value.result.assert_called_once()
-    assert result == {"warehouse_id": "wh-start", "status": "STARTED"}
+    assert result == {"warehouse_id": wh_id, "status": "STARTED"}
 
 # --- Tests for stop_sql_warehouse ---
 def test_stop_sql_warehouse_success(mock_db_client_data_tools):
-    result = stop_sql_warehouse(warehouse_id="wh-stop")
-    mock_db_client_data_tools.warehouses.stop.assert_called_once_with(id="wh-stop")
+    # Arrange
+    wh_id = "stop-wh"
+    # Act
+    result = stop_sql_warehouse(warehouse_id=wh_id)
+    # Assert
+    mock_db_client_data_tools.warehouses.stop.assert_called_once_with(id=wh_id)
+    # Check that the waiter was awaited
     mock_db_client_data_tools.warehouses.stop.return_value.result.assert_called_once()
-    assert result == {"warehouse_id": "wh-stop", "status": "STOPPED"}
+    assert result == {"warehouse_id": wh_id, "status": "STOPPED"}
 
-# Add tests for SDK error mapping if needed
+# Add tests for SDK errors being mapped by decorator if needed

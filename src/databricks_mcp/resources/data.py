@@ -170,7 +170,7 @@ def preview_table(catalog_name: str, schema_name: str, table_name: str, row_limi
     try:
         warehouses = db.warehouses.list()
         for w in warehouses:
-            if w.state == sql_service.ListWarehousesResponseState.RUNNING:
+            if w.state == sql_service.State.RUNNING:
                 warehouse_id = w.id
                 log.debug("Using warehouse for preview", warehouse_id=warehouse_id)
                 break

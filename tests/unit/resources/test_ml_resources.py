@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from databricks.sdk.service import mlflow as mlflow_service
+from databricks.sdk.service import ml as mlflow_service
 
 from databricks_mcp.resources.ml import get_mlflow_run_details
 from databricks_mcp.resources.ml import get_model_version_details
@@ -21,11 +21,11 @@ def mock_db_client_ml():
 # --- Tests for list_mlflow_experiments ---
 def test_list_mlflow_experiments_success(mock_db_client_ml):
     # Arrange
-    exp1 = MagicMock(spec=mlflow_service.Experiment)
+    exp1 = MagicMock()
     exp1.experiment_id = "exp1"; exp1.name = "Exp One"; exp1.artifact_location = "dbfs:/..."
     exp1.lifecycle_stage = "active"; exp1.creation_time = 1; exp1.last_update_time = 2
 
-    mock_response = MagicMock(spec=mlflow_service.ListExperimentsResponse)
+    mock_response = MagicMock()
     mock_response.experiments = [exp1]
     mock_db_client_ml.experiments.list_experiments.return_value = mock_response
 
@@ -41,13 +41,14 @@ def test_list_mlflow_experiments_success(mock_db_client_ml):
 # --- Tests for list_mlflow_runs ---
 def test_list_mlflow_runs_success(mock_db_client_ml):
     # Arrange
-    run_info = MagicMock(spec=mlflow_service.RunInfo)
+    run_info = MagicMock()
     run_info.run_id = "run1"; run_info.experiment_id = "exp1"; run_info.user_id = "user"
     run_info.status = "FINISHED"; run_info.start_time = 10; run_info.end_time = 20
     run_info.artifact_uri = "dbfs:/..."; run_info.lifecycle_stage = "active"
-    run = MagicMock(spec=mlflow_service.Run); run.info = run_info
+    run = MagicMock()
+    run.info = run_info
 
-    mock_response = MagicMock(spec=mlflow_service.SearchRunsResponse)
+    mock_response = MagicMock()
     mock_response.runs = [run]
     mock_db_client_ml.experiments.search_runs.return_value = mock_response
 
@@ -65,20 +66,25 @@ def test_list_mlflow_runs_success(mock_db_client_ml):
 # --- Tests for get_mlflow_run_details ---
 def test_get_mlflow_run_details_success(mock_db_client_ml):
      # Arrange
-    run_info = MagicMock(spec=mlflow_service.RunInfo)
+    run_info = MagicMock()
     run_info.run_id="run-detail"; run_info.experiment_id="exp-d"; run_info.user_id="ud"
     run_info.status="FINISHED"; run_info.start_time=1; run_info.end_time=2
     run_info.artifact_uri="art/uri"; run_info.lifecycle_stage="active"
 
-    param = MagicMock(spec=mlflow_service.Param); param.key="p1"; param.value="v1"
-    metric = MagicMock(spec=mlflow_service.Metric); metric.key="m1"; metric.value=0.99
-    tag = MagicMock(spec=mlflow_service.RunTag); tag.key="t1"; tag.value="tv1"
-    run_data = MagicMock(spec=mlflow_service.RunData)
+    param = MagicMock()
+    param.key="p1"; param.value="v1"
+    metric = MagicMock()
+    metric.key="m1"; metric.value=0.99
+    tag = MagicMock()
+    tag.key="t1"; tag.value="tv1"
+    run_data = MagicMock()
     run_data.params=[param]; run_data.metrics=[metric]; run_data.tags=[tag]
 
-    run = MagicMock(spec=mlflow_service.Run); run.info=run_info; run.data=run_data
+    run = MagicMock()
+    run.info=run_info; run.data=run_data
 
-    mock_response = MagicMock(spec=mlflow_service.GetRunResponse); mock_response.run = run
+    mock_response = MagicMock()
+    mock_response.run = run
     mock_db_client_ml.experiments.get_run.return_value = mock_response
 
     # Act
@@ -94,14 +100,14 @@ def test_get_mlflow_run_details_success(mock_db_client_ml):
 # --- Tests for list_registered_models ---
 def test_list_registered_models_success(mock_db_client_ml):
     # Arrange
-    latest_ver = MagicMock(spec=mlflow_service.ModelVersion)
+    latest_ver = MagicMock()
     latest_ver.name = "Model A"; latest_ver.version = "2"; latest_ver.current_stage = "Production"; latest_ver.status = "READY"
 
-    model1 = MagicMock(spec=mlflow_service.RegisteredModel)
+    model1 = MagicMock()
     model1.name = "Model A"; model1.creation_timestamp = 1; model1.last_updated_timestamp = 2
     model1.user_id = "u"; model1.description = "Desc A"; model1.latest_versions = [latest_ver]
 
-    mock_response = MagicMock(spec=mlflow_service.SearchRegisteredModelsResponse)
+    mock_response = MagicMock()
     mock_response.registered_models = [model1]
     mock_db_client_ml.model_registry.search_registered_models.return_value = mock_response
 
@@ -120,15 +126,16 @@ def test_list_registered_models_success(mock_db_client_ml):
 # --- Tests for get_model_version_details ---
 def test_get_model_version_details_success(mock_db_client_ml):
     # Arrange
-    tag = MagicMock(spec=mlflow_service.ModelVersionTag); tag.key="tag1"; tag.value="val1"
-    version_info = MagicMock(spec=mlflow_service.ModelVersion)
+    tag = MagicMock()
+    tag.key="tag1"; tag.value="val1"
+    version_info = MagicMock()
     version_info.name="ModelB"; version_info.version="1"; version_info.creation_timestamp=10
     version_info.last_updated_timestamp=11; version_info.user_id="u2"
     version_info.current_stage="Staging"; version_info.description="Version 1"
     version_info.source="source/path"; version_info.run_id="run-abc"; version_info.status="READY"
     version_info.status_message="OK"; version_info.tags=[tag]
 
-    mock_response = MagicMock(spec=mlflow_service.GetModelVersionResponse)
+    mock_response = MagicMock()
     mock_response.model_version = version_info
     mock_db_client_ml.model_registry.get_model_version.return_value = mock_response
 

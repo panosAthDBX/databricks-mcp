@@ -21,9 +21,11 @@ def list_clusters() -> list[dict]:
     """
     db = get_db_client()
     log.info("Listing Databricks clusters")
-    clusters = db.clusters.list() # This yields ClusterInfo objects
+    clusters_response = db.clusters.list() # Get the response object
 
     # Format the output as specified roughly in the PRD
+    # Iterate over the .clusters attribute if it exists
+    clusters_list = clusters_response.clusters if hasattr(clusters_response, 'clusters') else clusters_response
     result = [
         {
             "cluster_id": c.cluster_id,
@@ -33,7 +35,7 @@ def list_clusters() -> list[dict]:
             "worker_node_type": c.node_type_id, # Note: node_type_id is for workers when not autoscaling
             # Add more fields if desired, matching ClusterInfo attributes
         }
-        for c in clusters
+        for c in clusters_list # Iterate over the extracted list
     ]
     log.info("Successfully listed clusters", count=len(result))
     return result

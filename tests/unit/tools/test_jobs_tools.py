@@ -1,12 +1,13 @@
 from unittest.mock import MagicMock
 from unittest.mock import patch
+from pytest_mock import MockerFixture
 
 import pytest
 from databricks.sdk.service import jobs as jobs_service
 
 from databricks_mcp.tools.jobs import run_job_now
 from databricks_mcp.db_client import get_db_client # To mock
-from mcp import errors as mcp_errors
+from databricks_mcp import error_mapping as mcp_errors
 
 
 # Mock the get_db_client function

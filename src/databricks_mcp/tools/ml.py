@@ -58,18 +58,29 @@ def add_to_vector_index(index_name: str, primary_key: str, documents: list[dict]
     log.info("Adding/updating documents in Vector Search index", index_name=index_name, doc_count=len(documents))
 
     try:
-        response = db.vector_search_indexes.upsert_data(
+        response = db.vector_search_indexes.upsert_data_vector_index(
             index_name=index_name,
-            primary_key=primary_key,
             inputs_json=json.dumps(documents) # API likely expects JSON string
         )
-        status = response.summary.get("status", "UNKNOWN") if hasattr(response, "summary") and isinstance(response.summary, dict) else "UNKNOWN"
-        num_added = response.summary.get("upserted_count", 0) if hasattr(response, "summary") and isinstance(response.summary, dict) else 0
+        # Check response structure based on SDK
+        status = "UNKNOWN"
+        num_added = 0
+        summary = None
+        if hasattr(response, 'result') and response.result:
+            if hasattr(response, 'status'):
+                status = str(response.status.value) if response.status else "UNKNOWN"
+            if hasattr(response.result, 'success_row_count'):
+                num_added = response.result.success_row_count or 0
+            # Reconstruct a summary similar to previous expectation if needed for return value
+            summary = { "status": status, "success_row_count": num_added }
+            if hasattr(response.result, 'failed_primary_keys') and response.result.failed_primary_keys:
+                summary["failed_primary_keys"] = response.result.failed_primary_keys
+
         log.info("Upsert data result", index_name=index_name, status=status, num_added=num_added)
-        return {"status": status, "num_added": num_added, "response_summary": getattr(response, "summary", None)}
+        return {"status": status, "num_added": num_added, "response_summary": summary}
 
     except AttributeError:
-         log.error("Vector Search client/method (db.vector_search_indexes.upsert_data) not found in SDK. Check SDK version/API.")
+         log.error("Vector Search client/method (db.vector_search_indexes.upsert_data_vector_index) not found in SDK. Check SDK version/API.")
          raise NotImplementedError("Vector Search upsert functionality not available in current SDK setup.")
     except ImportError:
          log.error("Vector Search requires additional dependencies. Try `pip install databricks-vectorsearch`")
