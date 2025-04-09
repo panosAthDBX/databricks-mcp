@@ -240,7 +240,8 @@ This plan outlines the steps to implement the Databricks MCP Server based on the
     - [x] Finalize `README.md` with accurate setup, configuration, and usage instructions.
     - [x] Ensure adequate docstrings for implemented tools and resources.
     - [x] Run linters (`ruff check .`, `ruff format .`) and address issues. Configured S101 ignore for tests.
+    - [x] Created `docs/capabilities.md` summarizing all available tools and resources.
     - [ ] Perform final code review. (Manual step)
-    - **Summary:** README finalized, docstrings reviewed, linters run and configured.
+    - **Summary:** README finalized, docstrings reviewed, linters run and configured. Capability documentation created.
 
 ---

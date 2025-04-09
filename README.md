@@ -12,7 +12,8 @@ This server allows AI agents and other applications compatible with MCP to lever
 *   AI/ML workflow management (MLflow, Model Serving, Vector Search)
 *   Job execution & management
 
-Refer to the [Product Requirements Document](docs/databricks_mcp_prd.md) for detailed features and the [Technical Architecture](docs/databricks_mcp_tech_arch.md) for design specifics.
+Refer to the [Product Requirements Document](docs/databricks_mcp_prd.md) for original features and the [Technical Architecture](docs/databricks_mcp_tech_arch.md) for design specifics.
+For a detailed list of implemented tools and resources, see the [Capabilities Document](docs/capabilities.md).
 
 ## Setup
 
@@ -91,4 +92,5 @@ An MCP client/host can then connect to this process via its standard input/outpu
     *   Register the new capabilities in `src/databricks_mcp/server.py`.
     *   Add corresponding unit tests in the `tests/unit/` directory.
 
-See the [Implementation Plan](docs/implementation-plan.md) for tracking development tasks. 
+See the [Implementation Plan](docs/implementation-plan.md) for tracking development tasks.
+The implementation based on the initial plan is now complete. 
