@@ -17,7 +17,7 @@ log = structlog.get_logger(__name__)
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:files:read",
+    name="databricks-files-read",
     description="Reads the content of a file from DBFS or a Volume path.",
 )
 def read_file(path: str, offset: int = 0, length: int = 0) -> dict:
@@ -56,7 +56,7 @@ def read_file(path: str, offset: int = 0, length: int = 0) -> dict:
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:files:write",
+    name="databricks-files-write",
     description="Writes content to a file in DBFS or a Volume path. Content should be base64 encoded.",
 )
 def write_file(path: str, content_base64: str, overwrite: bool = False) -> dict:
@@ -90,7 +90,7 @@ def write_file(path: str, content_base64: str, overwrite: bool = False) -> dict:
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:files:delete",
+    name="databricks-files-delete",
     description="Deletes a file or directory (optionally recursively) from DBFS or a Volume path.",
 )
 def delete_file(path: str, recursive: bool = False) -> dict:
@@ -113,7 +113,7 @@ def delete_file(path: str, recursive: bool = False) -> dict:
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:files:create_directory",
+    name="databricks-files-create_directory",
     description="Creates a directory (including any necessary parent directories) in DBFS or a Volume path.",
 )
 def create_directory(path: str) -> dict:

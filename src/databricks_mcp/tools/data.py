@@ -12,7 +12,7 @@ log = structlog.get_logger(__name__)
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:sql:execute_statement",
+    name="databricks-sql-execute_statement",
     description=(
         "Submits a SQL query for asynchronous execution against a specified SQL Warehouse. "
         "Returns a statement_id to check status and retrieve results later using 'get_statement_result'."
@@ -60,7 +60,7 @@ def execute_sql(sql_query: str, warehouse_id: str, catalog: str | None = None, s
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:sql:get_statement_result",
+    name="databricks-sql-get_statement_result",
     description=(
         "Retrieves the status and results (if available) for a previously submitted SQL statement. "
         "Use this to check on queries submitted via 'execute_statement'."
@@ -229,7 +229,7 @@ def get_statement_result(statement_id: str) -> dict:
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:sql:start_warehouse",
+    name="databricks-sql-start_warehouse",
     description="Starts a stopped Databricks SQL Warehouse.",
 )
 def start_sql_warehouse(warehouse_id: str) -> dict:
@@ -251,7 +251,7 @@ def start_sql_warehouse(warehouse_id: str) -> dict:
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:sql:stop_warehouse",
+    name="databricks-sql-stop_warehouse",
     description="Stops a running Databricks SQL Warehouse.",
 )
 def stop_sql_warehouse(warehouse_id: str) -> dict:

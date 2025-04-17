@@ -13,7 +13,7 @@ log = structlog.get_logger(__name__)
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:ml:query_model_serving_endpoint",
+    name="databricks-ml-query_model_serving_endpoint",
     description="Queries a Databricks Model Serving endpoint with the provided input data.",
 )
 def query_model_serving_endpoint(endpoint_name: str, input_data: dict | list) -> dict:
@@ -41,7 +41,7 @@ def query_model_serving_endpoint(endpoint_name: str, input_data: dict | list) ->
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:vs:add_to_index",
+    name="databricks-vs-add_to_index",
     description="Adds or updates documents (as dictionaries) in a Databricks Vector Search index.",
 )
 def add_to_vector_index(index_name: str, primary_key: str, documents: list[dict]) -> dict:
@@ -89,7 +89,7 @@ def add_to_vector_index(index_name: str, primary_key: str, documents: list[dict]
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:vs:query_index",
+    name="databricks-vs-query_index",
     description="Queries a Databricks Vector Search index to find similar documents.",
 )
 def query_vector_index(

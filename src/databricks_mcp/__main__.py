@@ -1,3 +1,5 @@
+import sys
+
 import structlog
 
 # Import and setup logging first
@@ -17,7 +19,7 @@ def main():
     log.info("Starting Databricks MCP Server...")
     try:
         # Run the FastMCP server (which now has registered capabilities)
-        mcp.run('sse')
+        mcp.run()
         log.info("Databricks MCP Server finished.")
     except Exception as e:
         log.critical("Databricks MCP Server exited with an error", error=str(e), exc_info=True)

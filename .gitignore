@@ -168,3 +168,4 @@ cython_debug/
 .ruff_cache/ 
 
 poetry.lock
+.DS_Store

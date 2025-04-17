@@ -23,7 +23,7 @@ def setup_logging():
     # Configure standard logging to work with structlog
     logging.basicConfig(
         format="%(message)s",
-        stream=sys.stdout,
+        stream=sys.stderr,
         level=settings.numeric_log_level,
     )
 

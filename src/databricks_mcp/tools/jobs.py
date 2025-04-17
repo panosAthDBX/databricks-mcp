@@ -10,7 +10,7 @@ log = structlog.get_logger(__name__)
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:jobs:run_now",
+    name="databricks-jobs-run_now",
     description=(
         "Triggers a specific Databricks Job to run immediately and waits for its completion. "
         "Optional parameters can be provided to override job settings for this run. "

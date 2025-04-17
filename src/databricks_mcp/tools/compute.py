@@ -10,7 +10,7 @@ log = structlog.get_logger(__name__)
 @map_databricks_errors
 # Use the mcp instance decorator
 @mcp.tool(
-    name="databricks:compute:start_cluster",
+    name="databricks-compute-start_cluster",
     description="Starts a terminated Databricks cluster.",
 )
 def start_cluster(cluster_id: str) -> dict:
@@ -35,7 +35,7 @@ def start_cluster(cluster_id: str) -> dict:
 @map_databricks_errors
 # Use the mcp instance decorator
 @mcp.tool(
-    name="databricks:compute:terminate_cluster",
+    name="databricks-compute-terminate_cluster",
     description="Terminates a running Databricks cluster.",
 )
 def terminate_cluster(cluster_id: str) -> dict:

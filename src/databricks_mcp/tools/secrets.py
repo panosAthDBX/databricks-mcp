@@ -13,7 +13,7 @@ log = structlog.get_logger(__name__)
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:secrets:get_secret",
+    name="databricks-secrets-get_secret",
     description=(
         "Retrieves the value of a secret. WARNING: This exposes sensitive information. "
         "Use with extreme caution and ensure the server is appropriately secured."
@@ -53,7 +53,7 @@ def get_secret(scope_name: str, key: str) -> dict:
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:secrets:put_secret",
+    name="databricks-secrets-put_secret",
     description="Creates or updates a secret with a string value.",
 )
 def put_secret(scope_name: str, key: str, secret_value: str) -> dict:
@@ -79,7 +79,7 @@ def put_secret(scope_name: str, key: str, secret_value: str) -> dict:
 
 @map_databricks_errors
 @mcp.tool(
-    name="databricks:secrets:delete_secret",
+    name="databricks-secrets-delete_secret",
     description="Deletes a secret.",
 )
 def delete_secret(scope_name: str, key: str) -> dict:

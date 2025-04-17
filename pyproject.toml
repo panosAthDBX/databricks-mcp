@@ -18,6 +18,7 @@ databricks-sdk = "*" # Replace with actual version constraint if known
 pydantic-settings = "*"
 python-dotenv = "*"
 structlog = "*" # For structured logging, alternative to custom formatter
+fastmcp = "^2.1.2"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "*"

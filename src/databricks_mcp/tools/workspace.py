@@ -13,12 +13,19 @@ log = structlog.get_logger(__name__)
 
 # Define language choices for execute_code
 from typing import Literal
-LanguageOptions = Literal["python", "sql", "scala", "r"]
+from enum import Enum
+
+# Define LanguageOptions using Enum for better validation and clarity
+class LanguageOptions(str, Enum):
+    PYTHON = "python"
+    SQL = "sql"
+    SCALA = "scala"
+    R = "r"
 
 @map_databricks_errors
 # Use the mcp instance decorator
 @mcp.tool(
-    name="databricks:workspace:run_notebook",
+    name="databricks-workspace-run_notebook",
     description=(
         "Runs a Databricks notebook and waits for its completion. "
         "NOTE: This tool currently blocks until the notebook run finishes, fails, or times out."
@@ -77,7 +84,7 @@ def run_notebook(notebook_path: str, cluster_id: str | None = None, parameters: 
 @map_databricks_errors
 # Use the mcp instance decorator
 @mcp.tool(
-    name="databricks:workspace:execute_code",
+    name="databricks-workspace-execute_code",
      description=(
         "Executes a snippet of code (Python, SQL, Scala, R) on a specified cluster and waits for completion. "
         "NOTE: This tool currently blocks until the command finishes, fails, or times out."
