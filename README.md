@@ -63,11 +63,20 @@ cp .env.example .env
 
 Make sure your virtual environment is activated (`poetry shell`) and your `.env` file is configured.
 
-Run the server via `stdio`:
+Run the server via stdio:
 
 ```bash
-python -m src.databricks_mcp
+poetry install
+poetry run python -m src.databricks_mcp
 ```
+
+Notes:
+- If you have the package installed into the environment, you can alternatively run `poetry run python -m databricks_mcp`.
+- Ensure environment variables (e.g., `DATABRICKS_HOST`, `DATABRICKS_TOKEN`) are set or present in a `.env`.
+
+Troubleshooting:
+- If you see `ModuleNotFoundError` (e.g., `structlog`, `mcp`), run `poetry install` to install dependencies.
+- If Databricks credentials are missing, the server logs a critical warning at startup but continues to run; tools will fail until credentials are configured.
 
 An MCP client/host can then connect to this process via its standard input/output.
 
