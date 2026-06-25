@@ -13,14 +13,9 @@ log = structlog.get_logger(__name__)
 
 # Define language choices for execute_code
 from typing import Literal
-from enum import Enum
 
-# Define LanguageOptions using Enum for better validation and clarity
-class LanguageOptions(str, Enum):
-    PYTHON = "python"
-    SQL = "sql"
-    SCALA = "scala"
-    R = "r"
+# Use Literal instead of Enum to avoid $ref in JSON schema (Claude API doesn't support $ref)
+LanguageOptions = Literal["python", "sql", "scala", "r"]
 
 @map_databricks_errors
 # Use the mcp instance decorator
